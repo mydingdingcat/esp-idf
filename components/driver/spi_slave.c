@@ -13,29 +13,31 @@
 // limitations under the License.
 
 #include <string.h>
-#include "sdkconfig.h"
-#include <hal/spi_ll.h>
-#include <hal/spi_slave_hal.h>
-#include <soc/lldesc.h>
-#include "driver/spi_common_internal.h"
-#include "driver/spi_slave.h"
-#include "soc/spi_periph.h"
-#include "soc/gpio_caps.h"
 #include "esp_types.h"
 #include "esp_attr.h"
 #include "esp_intr_alloc.h"
 #include "esp_log.h"
 #include "esp_err.h"
 #include "esp_pm.h"
+#include "esp_heap_caps.h"
+#include "esp_rom_gpio.h"
+#include "esp_rom_sys.h"
+#include "soc/lldesc.h"
+#include "soc/soc_caps.h"
+#include "soc/spi_periph.h"
+#include "soc/soc_memory_layout.h"
+#include "hal/spi_ll.h"
+#include "hal/spi_slave_hal.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/xtensa_api.h"
 #include "freertos/task.h"
-#include "soc/soc_memory_layout.h"
+#include "sdkconfig.h"
+
 #include "driver/gpio.h"
-#include "esp_heap_caps.h"
-#include "esp_rom_gpio.h"
-#include "esp_rom_sys.h"
+#include "driver/spi_common_internal.h"
+#include "driver/spi_slave.h"
+#include "hal/spi_slave_hal.h"
 
 static const char *SPI_TAG = "spi_slave";
 #define SPI_CHECK(a, str, ret_val) \
@@ -80,7 +82,7 @@ static inline bool is_valid_host(spi_host_device_t host)
 {
 #if CONFIG_IDF_TARGET_ESP32
     return host >= SPI1_HOST && host <= SPI3_HOST;
-#elif CONFIG_IDF_TARGET_ESP32S2
+#elif CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
 // SPI_HOST (SPI1_HOST) is not supported by the SPI Slave driver on ESP32-S2
     return host >= SPI2_HOST && host <= SPI3_HOST;
 #endif
@@ -192,7 +194,13 @@ esp_err_t spi_slave_initialize(spi_host_device_t host, const spi_bus_config_t *b
     }
 
     spi_slave_hal_context_t *hal = &spihost[host]->hal;
-    spi_slave_hal_init(hal, host);
+    //assign the SPI, RX DMA and TX DMA peripheral registers beginning address
+    spi_slave_hal_config_t hal_config = {
+        .host_id = host,
+        .dma_in = SPI_LL_GET_HW(host),
+        .dma_out = SPI_LL_GET_HW(host)
+    };
+    spi_slave_hal_init(hal, &hal_config);
 
     if (dma_desc_ct) {
         hal->dmadesc_tx = heap_caps_malloc(sizeof(lldesc_t) * dma_desc_ct, MALLOC_CAP_DMA);

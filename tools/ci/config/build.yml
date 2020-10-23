@@ -83,6 +83,11 @@ build_esp_idf_tests_cmake_esp32s2:
   variables:
     IDF_TARGET: esp32s2
 
+build_esp_idf_tests_cmake_esp32s3:
+  extends: .build_esp_idf_tests_cmake
+  variables:
+    IDF_TARGET: esp32s3
+
 .build_examples_template:
   extends: .build_template
   artifacts:
@@ -231,7 +236,6 @@ build_component_ut_esp32s2:
     paths:
       - docs/_build/*/*/*.txt
       - docs/_build/*/*/html/*
-      - docs/_build/*/*/latex/*
     expire_in: 4 days
   only:
     variables:
@@ -243,31 +247,39 @@ build_component_ut_esp32s2:
   script:
     - cd docs
     - ${IDF_PATH}/tools/ci/multirun_with_pyenv.sh -p 3.6.10 pip install -r requirements.txt
-    - ${IDF_PATH}/tools/ci/multirun_with_pyenv.sh -p 3.6.10 ./build_docs.py -bs html latex -l $DOCLANG -t $DOCTGT build
+    - ${IDF_PATH}/tools/ci/multirun_with_pyenv.sh -p 3.6.10 ./build_docs.py -bs html -l $DOCLANG -t $DOCTGT build
 
-build_docs_en_esp32:
+build_docs_html:
   extends: .build_docs_template
-  variables:
-    DOCLANG: "en"
-    DOCTGT: "esp32"
+  parallel:
+    matrix:
+      - DOCLANG: ["en", "zh_CN"]
+        DOCTGT: ["esp32", "esp32s2"]
 
-build_docs_en_esp32s2:
-  extends: .build_docs_template
-  variables:
-    DOCLANG: "en"
-    DOCTGT: "esp32s2"
-
-build_docs_zh_CN_esp32:
-  extends: .build_docs_template
-  variables:
-    DOCLANG: "zh_CN"
-    DOCTGT: "esp32"
-
-build_docs_zh_CN_esp32s2:
-  extends: .build_docs_template
-  variables:
-    DOCLANG: "zh_CN"
-    DOCTGT: "esp32s2"
+build_docs_pdf:
+  stage: build
+  image: $ESP_IDF_DOC_ENV_IMAGE
+  tags:
+    - build_docs
+  artifacts:
+    when: always
+    paths:
+      - docs/_build/*/*/latex/*
+    expire_in: 4 days
+  rules:
+    - if: '$CI_COMMIT_REF_NAME == "master"'
+    - if: '$CI_COMMIT_REF_NAME =~ "/^release\/v/"'
+    - if: '$CI_COMMIT_REF_NAME =~ "/^v\d+\.\d+(\.\d+)?($|-)/"'
+    - if: $BOT_LABEL_BUILD_DOCS
+  dependencies: []
+  parallel:
+    matrix:
+      - DOCLANG: ["en", "zh_CN"]
+        DOCTGT: ["esp32", "esp32s2"]
+  script:
+    - cd docs
+    - ${IDF_PATH}/tools/ci/multirun_with_pyenv.sh -p 3.6.10 pip install -r requirements.txt
+    - ${IDF_PATH}/tools/ci/multirun_with_pyenv.sh -p 3.6.10 ./build_docs.py -bs latex -l $DOCLANG -t $DOCTGT build
 
 test_build_system:
   extends: .build_template
@@ -430,15 +442,16 @@ build_template_app:
 .sonar_scan_template:
   stage: build
   image:
-    name: $CI_DOCKER_REGISTRY/sonarqube-scanner:1
+    name: $CI_DOCKER_REGISTRY/sonarqube-scanner:2
   before_script:
     - export PYTHONPATH="$CI_PROJECT_DIR/tools:$CI_PROJECT_DIR/tools/ci/python_packages:$PYTHONPATH"
     - python $SUBMODULE_FETCH_TOOL
     # Exclude the submodules, all paths ends with /**
     # get all submodules configs | get all paths | add /** as suffix | xargs | replace all <space> to <comma>
     - export SUBMODULES=$(git config --file .gitmodules --get-regexp path | awk '{ print $2 }' | sed -e 's|$|/**|' | xargs | sed -e 's/ /,/g')
-    # Exclude the report dir
-    - export EXCLUSIONS="$SUBMODULES,$REPORT_DIR/**,docs/_static/**,**/*.png,**/*.jpg"
+    # get all exclude paths specified in tools/ci/sonar_exclude_list.txt | ignore lines start with # | xargs | replace all <space> to <comma>
+    - export CUSTOM_EXCLUDES=$(cat $CI_PROJECT_DIR/tools/ci/sonar_exclude_list.txt | grep -v '^#' | xargs | sed -e 's/ /,/g')
+    - export EXCLUSIONS="$SUBMODULES,$CUSTOM_EXCLUDES,$REPORT_DIR/**,docs/_static/**,**/*.png,**/*.jpg"
     - python $NORMALIZE_CLANGTIDY_PY $CI_PROJECT_DIR/$REPORT_DIR/warnings.txt $CI_PROJECT_DIR/$REPORT_DIR/clang_tidy_report.txt $CI_PROJECT_DIR
   variables:
     GIT_DEPTH: 0

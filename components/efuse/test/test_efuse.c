@@ -17,6 +17,9 @@
 #include "test_utils.h"
 #include "sdkconfig.h"
 #include "esp_rom_efuse.h"
+#include "bootloader_common.h"
+
+#if !TEMPORARY_DISABLED_FOR_TARGETS(ESP32S3)
 
 static const char* TAG = "efuse_test";
 
@@ -695,8 +698,8 @@ TEST_CASE("Batch mode is thread-safe", "[efuse]")
     sema = xSemaphoreCreateBinary();
 
     printf("\n");
-    xTaskCreatePinnedToCore(task1, "task1", 2048, NULL, UNITY_FREERTOS_PRIORITY - 1, NULL, 0);
-    xTaskCreatePinnedToCore(task2, "task2", 2048, NULL, UNITY_FREERTOS_PRIORITY - 1, NULL, 1);
+    xTaskCreatePinnedToCore(task1, "task1", 3072, NULL, UNITY_FREERTOS_PRIORITY - 1, NULL, 0);
+    xTaskCreatePinnedToCore(task2, "task2", 3072, NULL, UNITY_FREERTOS_PRIORITY - 1, NULL, 1);
     vTaskDelay(3000 / portTICK_PERIOD_MS);
     xSemaphoreTake(sema, portMAX_DELAY);
 
@@ -704,8 +707,8 @@ TEST_CASE("Batch mode is thread-safe", "[efuse]")
     esp_efuse_utility_erase_virt_blocks();
 
     printf("\n");
-    xTaskCreatePinnedToCore(task1, "task1", 2048, NULL, UNITY_FREERTOS_PRIORITY - 1, NULL, 0);
-    xTaskCreatePinnedToCore(task3, "task3", 2048, NULL, UNITY_FREERTOS_PRIORITY - 1, NULL, 1);
+    xTaskCreatePinnedToCore(task1, "task1", 3072, NULL, UNITY_FREERTOS_PRIORITY - 1, NULL, 0);
+    xTaskCreatePinnedToCore(task3, "task3", 3072, NULL, UNITY_FREERTOS_PRIORITY - 1, NULL, 1);
     vTaskDelay(3000 / portTICK_PERIOD_MS);
     xSemaphoreTake(sema, portMAX_DELAY);
 
@@ -845,3 +848,17 @@ TEST_CASE("Test a real write (FPGA)", "[efuse]")
     }
 }
 #endif  // CONFIG_IDF_ENV_FPGA
+
+TEST_CASE("Test chip_ver_pkg APIs return the same value", "[efuse]")
+{
+    esp_efuse_utility_update_virt_blocks();
+    TEST_ASSERT_EQUAL_INT(esp_efuse_get_pkg_ver(), bootloader_common_get_chip_ver_pkg());
+}
+
+TEST_CASE("Test chip_revision APIs return the same value", "[efuse]")
+{
+    esp_efuse_utility_update_virt_blocks();
+    TEST_ASSERT_EQUAL_INT(esp_efuse_get_chip_ver(), bootloader_common_get_chip_revision());
+}
+
+#endif // #if !TEMPORARY_DISABLED_FOR_TARGETS(ESP32S3)

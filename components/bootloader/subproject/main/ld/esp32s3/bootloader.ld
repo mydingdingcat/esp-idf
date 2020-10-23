@@ -6,8 +6,8 @@
 
 MEMORY
 {
-  iram_seg (RWX) :                  org = 0x403B8000, len = 0x4000
-  iram_loader_seg (RWX) :           org = 0x403BC000, len = 0x4000
+  iram_seg (RWX) :                  org = 0x403B6000, len = 0x4000
+  iram_loader_seg (RWX) :           org = 0x403BA000, len = 0x6000
   dram_seg (RW) :                   org = 0x3FCD0000, len = 0x4000
 }
 
@@ -29,6 +29,7 @@ SECTIONS
     *libbootloader_support.a:bootloader_common.*(.literal .text .literal.* .text.*)
     *libbootloader_support.a:bootloader_flash.*(.literal .text .literal.* .text.*)
     *libbootloader_support.a:bootloader_random.*(.literal .text .literal.* .text.*)
+    *libbootloader_support.a:bootloader_random*.*(.literal.bootloader_random_disable .text.bootloader_random_disable)
     *libbootloader_support.a:bootloader_efuse_esp32s3.*(.literal .text .literal.* .text.*)
     *libbootloader_support.a:bootloader_utility.*(.literal .text .literal.* .text.*)
     *libbootloader_support.a:bootloader_sha.*(.literal .text .literal.* .text.*)

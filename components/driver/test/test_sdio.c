@@ -22,7 +22,9 @@
 #include "soc/soc_caps.h"
 #include "ccomp_timer.h"
 
-#if defined(SOC_SDMMC_HOST_SUPPORTED) && defined(SOC_SDIO_SLAVE_SUPPORTED)
+#if !TEMPORARY_DISABLED_FOR_TARGETS(ESP32S3)
+
+#if SOC_SDMMC_HOST_SUPPORTED && SOC_SDIO_SLAVE_SUPPORTED
 #include "driver/sdio_slave.h"
 #include "driver/sdmmc_host.h"
 
@@ -804,5 +806,7 @@ ptest_func_t tohost_slave = {
 };
 
 TEST_MASTER_SLAVE(SDIO_TOHOST, test_cfg_array, "[sdio][timeout=180][test_env=UT_SDIO]", &tohost_master, &tohost_slave);
+
+#endif //SOC_SDMMC_HOST_SUPPORTED && SOC_SDIO_SLAVE_SUPPORTED
 
 #endif

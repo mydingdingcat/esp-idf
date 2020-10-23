@@ -9,8 +9,6 @@ set(srcs
     "xtensa/portasm.S"
     "xtensa/xtensa_context.S"
     "xtensa/xtensa_init.c"
-    "xtensa/xtensa_intr_asm.S"
-    "xtensa/xtensa_intr.c"
     "xtensa/xtensa_overlay_os_hook.c"
     "xtensa/xtensa_vector_defaults.S"
     "xtensa/xtensa_vectors.S")
@@ -18,11 +16,12 @@ set(srcs
 list(APPEND srcs 
     "croutine.c"
     "event_groups.c"
-    "FreeRTOS-openocd.c"
     "list.c"
     "queue.c"
     "tasks.c"
-    "timers.c")
+    "timers.c"
+    "stream_buffer.c"
+    "FreeRTOS-openocd.c")
 
 set(include_dirs 
     include
@@ -59,6 +58,7 @@ set_source_files_properties(
     event_groups.c
     timers.c
     queue.c
+    stream_buffer.c
     PROPERTIES COMPILE_DEFINITIONS
     _ESP_FREERTOS_INTERNAL
     )

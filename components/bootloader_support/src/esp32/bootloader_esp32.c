@@ -24,6 +24,7 @@
 #include "bootloader_flash_config.h"
 #include "bootloader_mem.h"
 #include "bootloader_console.h"
+#include "bootloader_flash_priv.h"
 
 #include "soc/cpu.h"
 #include "soc/dport_reg.h"
@@ -52,8 +53,7 @@ static const char *TAG = "boot.esp32";
 
 void bootloader_configure_spi_pins(int drv)
 {
-    uint32_t chip_ver = REG_GET_FIELD(EFUSE_BLK0_RDATA3_REG, EFUSE_RD_CHIP_VER_PKG);
-    uint32_t pkg_ver = chip_ver & 0x7;
+    uint32_t pkg_ver = bootloader_common_get_chip_ver_pkg();
 
     if (pkg_ver == EFUSE_RD_CHIP_VER_PKG_ESP32D2WDQ5 ||
         pkg_ver == EFUSE_RD_CHIP_VER_PKG_ESP32PICOD2 ||
@@ -267,6 +267,8 @@ static esp_err_t bootloader_init_spi_flash(void)
 
     print_flash_info(&bootloader_image_hdr);
     update_flash_config(&bootloader_image_hdr);
+    //ensure the flash is write-protected
+    bootloader_enable_wp();
     return ESP_OK;
 }
 

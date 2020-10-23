@@ -392,12 +392,12 @@ if(CONFIG_BT_ENABLED)
                     "esp_ble_mesh/mesh_core/settings.c"
                     "esp_ble_mesh/mesh_core/test.c"
                     "esp_ble_mesh/mesh_core/transport.c"
+                    "esp_ble_mesh/mesh_models/common/device_property.c"
                     "esp_ble_mesh/mesh_models/client/client_common.c"
                     "esp_ble_mesh/mesh_models/client/generic_client.c"
                     "esp_ble_mesh/mesh_models/client/lighting_client.c"
                     "esp_ble_mesh/mesh_models/client/sensor_client.c"
                     "esp_ble_mesh/mesh_models/client/time_scene_client.c"
-                    "esp_ble_mesh/mesh_models/server/device_property.c"
                     "esp_ble_mesh/mesh_models/server/generic_server.c"
                     "esp_ble_mesh/mesh_models/server/lighting_server.c"
                     "esp_ble_mesh/mesh_models/server/sensor_server.c"
@@ -563,7 +563,7 @@ endif()
 idf_component_register(SRCS "${srcs}"
                 INCLUDE_DIRS "${include_dirs}"
                 PRIV_INCLUDE_DIRS "${priv_include_dirs}"
-                REQUIRES nvs_flash soc esp_timer
+                REQUIRES nvs_flash soc esp_timer esp_pm
                 PRIV_REQUIRES esp_ipc)
 
 if(CONFIG_BT_ENABLED)

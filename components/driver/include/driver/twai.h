@@ -19,16 +19,13 @@ extern "C" {
 #endif
 
 #include "soc/soc_caps.h"
-#ifndef SOC_TWAI_SUPPORTED
-#error TWAI is not supported in this chip target
-#endif
+#if SOC_TWAI_SUPPORTED
 
 #include "freertos/FreeRTOS.h"
 #include "esp_types.h"
 #include "esp_intr_alloc.h"
 #include "esp_err.h"
 #include "gpio.h"
-#include "soc/twai_caps.h"
 #include "hal/twai_types.h"
 
 /* -------------------- Default initializers and flags ---------------------- */
@@ -40,10 +37,11 @@ extern "C" {
  * configured. The other members of the general configuration structure are
  * assigned default values.
  */
-#define TWAI_GENERAL_CONFIG_DEFAULT(tx_io_num, rx_io_num, op_mode) {.mode = op_mode, .tx_io = tx_io_num, .rx_io = rx_io_num,       \
-                                                                    .clkout_io = TWAI_IO_UNUSED, .bus_off_io = TWAI_IO_UNUSED,       \
-                                                                    .tx_queue_len = 5, .rx_queue_len = 5,                          \
-                                                                    .alerts_enabled = TWAI_ALERT_NONE,  .clkout_divider = 0,        }
+#define TWAI_GENERAL_CONFIG_DEFAULT(tx_io_num, rx_io_num, op_mode) {.mode = op_mode, .tx_io = tx_io_num, .rx_io = rx_io_num,        \
+                                                                    .clkout_io = TWAI_IO_UNUSED, .bus_off_io = TWAI_IO_UNUSED,      \
+                                                                    .tx_queue_len = 5, .rx_queue_len = 5,                           \
+                                                                    .alerts_enabled = TWAI_ALERT_NONE,  .clkout_divider = 0,        \
+                                                                    .intr_flags = ESP_INTR_FLAG_LEVEL1}
 
 /**
  * @brief   Alert flags
@@ -70,7 +68,7 @@ extern "C" {
 #define TWAI_ALERT_BUS_OFF                  0x1000  /**< Alert(4096): Bus-off condition occurred. TWAI controller can no longer influence bus */
 #define TWAI_ALERT_ALL                      0x1FFF  /**< Bit mask to enable all alerts during configuration */
 #define TWAI_ALERT_NONE                     0x0000  /**< Bit mask to disable all alerts during configuration */
-#define TWAI_ALERT_AND_LOG                  0x2000  /**< Bit mask to enable alerts to also be logged when they occur */
+#define TWAI_ALERT_AND_LOG                  0x2000  /**< Bit mask to enable alerts to also be logged when they occur. Note that logging from the ISR is disabled if CONFIG_TWAI_ISR_IN_IRAM is enabled (see docs). */
 
 /** @endcond */
 
@@ -103,6 +101,7 @@ typedef struct {
     uint32_t rx_queue_len;          /**< Number of messages RX queue can hold */
     uint32_t alerts_enabled;        /**< Bit field of alerts to enable (see documentation) */
     uint32_t clkout_divider;        /**< CLKOUT divider. Can be 1 or any even number from 2 to 14 (optional, set to 0 if unused) */
+    int intr_flags;                 /**< Interrupt flags to set the priority of the driver's ISR. Note that to use the ESP_INTR_FLAG_IRAM, the CONFIG_TWAI_ISR_IN_IRAM option should be enabled first. */
 } twai_general_config_t;
 
 /**
@@ -345,3 +344,5 @@ esp_err_t twai_clear_receive_queue(void);
 #ifdef __cplusplus
 }
 #endif
+
+#endif //SOC_TWAI_SUPPORTED

@@ -7,10 +7,12 @@
 #include "freertos/portable.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
-#ifdef CONFIG_IDF_TARGET_ESP32
+#if CONFIG_IDF_TARGET_ESP32
 #include "esp32/clk.h"
-#elif defined(CONFIG_IDF_TARGET_ESP32S2)
+#elif CONFIG_IDF_TARGET_ESP32S2
 #include "esp32s2/clk.h"
+#elif CONFIG_IDF_TARGET_ESP32S3
+#include "esp32s3/clk.h"
 #endif
 #include "soc/cpu.h"
 #include "esp_rom_sys.h"
@@ -137,7 +139,7 @@ TEST_CASE("multiple tasks can access wl handle simultaneously", "[wear_levelling
     TEST_ESP_OK(wl_erase_range(handle, 0, sector_size * 8));
     read_write_test_arg_t args1 = READ_WRITE_TEST_ARG_INIT(0, 1, handle, sector_size/sizeof(uint32_t));
     read_write_test_arg_t args2 = READ_WRITE_TEST_ARG_INIT(sector_size, 2, handle, sector_size/sizeof(uint32_t));
-    const size_t stack_size = 4096;
+    const size_t stack_size = 8192;
 
     printf("writing 1 and 2\n");
     const int cpuid_0 = 0;

@@ -11,8 +11,7 @@ Wi-Fi Driver
 - Support an Espressif-specific protocol which, in turn, supports up to **1 km** of data traffic
 - Up to 20 MBit/sec TCP throughput and 30 MBit/sec UDP throughput over the air
 - Support Sniffer
-- Support set fast_crypto algorithm and normal algorithm switch which used in wifi connect
-- Support both fast scan and all channel scan feature
+- Support both fast scan and all-channel scan
 - Support multiple antennas
 - Support channel state information
 
@@ -298,7 +297,7 @@ Below is a "big scenario" which describes some small scenarios in Station mode:
 ++++++++++++++++++++++++++++++
  - s1.1: The main task calls esp_netif_init() to create an LwIP core task and initialize LwIP-related work.
 
- - s1.2: The main task calls esp_event_loop_init() to create a system Event task and initialize an application event's callback function. In the scenario above, the application event's callback function does nothing but relaying the event to the application task.
+ - s1.2: The main task calls :cpp:func:`esp_event_loop_create` to create a system Event task and initialize an application event's callback function. In the scenario above, the application event's callback function does nothing but relaying the event to the application task.
 
  - s1.3: The main task calls esp_netif_create_default_wifi_ap() or esp_netif_create_default_wifi_sta() to create default network interface instance binding station or AP with TCP/IP stack.
 
@@ -511,10 +510,10 @@ The scan type and other per-scan attributes are configured by esp_wifi_scan_star
 |                  |                                                              |
 +------------------+--------------------------------------------------------------+
 
-There also some global scan attributes which is configured by API esp_wifi_set_config, refer to `Station Basic Configuration`_
+There are also some global scan attributes which are configured by API :cpp:func:`esp_wifi_set_config`, refer to `Station Basic Configuration`_
 
-Scan All APs In All Channels(foreground)
-+++++++++++++++++++++++++++++++++++++++++++
+Scan All APs on All Channels (Foreground)
++++++++++++++++++++++++++++++++++++++++++++++
 
 Scenario:
 
@@ -570,8 +569,8 @@ Scan-Done Event Handling Phase
  - s3.1: When all channels are scanned, <`WIFI_EVENT_SCAN_DONE`_> will arise.
  - s3.2: The application's event callback function notifies the application task that <`WIFI_EVENT_SCAN_DONE`_> is received. esp_wifi_scan_get_ap_num() is called to get the number of APs that have been found in this scan. Then, it allocates enough entries and calls esp_wifi_scan_get_ap_records() to get the AP records. Please note that the AP records in the Wi-Fi driver will be freed, once esp_wifi_scan_get_ap_records() is called. Do not call esp_wifi_scan_get_ap_records() twice for a single scan-done event. If esp_wifi_scan_get_ap_records() is not called when the scan-done event occurs, the AP records allocated by the Wi-Fi driver will not be freed. So, make sure you call esp_wifi_scan_get_ap_records(), yet only once.
 
-Scan All APs on All Channels(background)
-++++++++++++++++++++++++++++++++++++++++
+Scan All APs on All Channels (Background)
+++++++++++++++++++++++++++++++++++++++++++
 Scenario:
 
 .. seqdiag::
@@ -604,9 +603,9 @@ Scenario:
         APP_TASK   <-  EVENT_TASK [label="3.2 > WIFI_EVENT_SCAN_DONE"];
     }
 
-The scenario above is an all-channel background scan. Compared to `Scan All APs In All Channels(foreground)`_ , the difference in the all-channel background scan is that the Wi-Fi driver will scan the back-to-home channel for 30 ms before it switches to the next channel to give the Wi-Fi connection a chance to transmit/receive data.
+The scenario above is an all-channel background scan. Compared to `Scan All APs on All Channels (Foreground)`_ , the difference in the all-channel background scan is that the Wi-Fi driver will scan the back-to-home channel for 30 ms before it switches to the next channel to give the Wi-Fi connection a chance to transmit/receive data.
 
-Scan for a Specific AP in All Channels
+Scan for Specific AP on All Channels
 +++++++++++++++++++++++++++++++++++++++
 Scenario:
 
@@ -637,7 +636,7 @@ Scenario:
         APP_TASK   <-  EVENT_TASK [label="3.2 > WIFI_EVENT_SCAN_DONE"];
     }
 
-This scan is similar to `Scan All APs In All Channels(foreground)`_. The differences are:
+This scan is similar to `Scan All APs on All Channels (Foreground)`_. The differences are:
 
  - s1.1: In step 1.2, the target AP will be configured to SSID/BSSID.
  - s2.1~s2.N: Each time the Wi-Fi driver scans an AP, it will check whether it is a target AP or not. If the scan is WIFI_FAST_SCAN scan and the target AP is found, then the scan-done event will arise and scanning will end; otherwise, the scan will continue. Please note that the first scanned channel may not be channel 1, because the Wi-Fi driver optimizes the scanning sequence.
@@ -649,7 +648,7 @@ You can scan a specific AP, or all of them, in any given channel. These two scen
 Scan in Wi-Fi Connect
 +++++++++++++++++++++++++
 
-When esp_wifi_connect() is called, then the Wi-Fi driver will try to scan the configured AP first. The scan in "Wi-Fi Connect" is the same as `Scan for a Specific AP In All Channels`_, except that no scan-done event will be generated when the scan is completed. If the target AP is found, then the Wi-Fi driver will start the Wi-Fi connection; otherwise, <`WIFI_EVENT_STA_DISCONNECTED`_> will be generated. Refer to `Scan for a Specific AP in All Channels`_
+When esp_wifi_connect() is called, the Wi-Fi driver will try to scan the configured AP first. The scan in "Wi-Fi Connect" is the same as `Scan for Specific AP On All Channels`_, except that no scan-done event will be generated when the scan is completed. If the target AP is found, the Wi-Fi driver will start the Wi-Fi connection; otherwise, <`WIFI_EVENT_STA_DISCONNECTED`_> will be generated. Refer to `Scan for Specific AP On All Channels`_
 
 Scan In Blocked Mode
 ++++++++++++++++++++
@@ -717,15 +716,13 @@ Scenario:
         WIFI_TASK  <-  AP        [label="3.3 > Assoc response"];
         EVENT_TASK <-  WIFI_TASK [label="3.4 > WIFI_EVENT_STA_DISCONNECTED"];
         === 4. 4-way Handshake Phase ===
-        WIFI_TASK  ->  AP        [label="4.1 > 1/4 EAPOL"];
-        EVENT_TASK <-  WIFI_TASK [label="4.2 > WIFI_EVENT_STA_DISCONNECTED"];
+        EVENT_TASK <-  WIFI_TASK [label="4.1 > WIFI_EVENT_STA_DISCONNECTED"];
+        WIFI_TASK  <-  AP        [label="4.2 > 1/4 EAPOL"];
         WIFI_TASK  ->  AP        [label="4.3 > 2/4 EAPOL"];
         EVENT_TASK <-  WIFI_TASK [label="4.4 > WIFI_EVENT_STA_DISCONNECTED"];
-        WIFI_TASK  ->  AP        [label="4.5 > 3/4 EAPOL"];
-        EVENT_TASK <-  WIFI_TASK [label="4.6 > WIFI_EVENT_STA_DISCONNECTED"];
-        WIFI_TASK  ->  AP        [label="4.7 > 4/4 EAPOL"];
-        EVENT_TASK <-  WIFI_TASK [label="4.8 > WIFI_EVENT_STA_DISCONNECTED"];
-        EVENT_TASK <-  WIFI_TASK [label="4.9 > WIFI_EVENT_STA_CONNECTED"];
+        WIFI_TASK  <-  AP        [label="4.5 > 3/4 EAPOL"];
+        WIFI_TASK  ->  AP        [label="4.6 > 4/4 EAPOL"];
+        EVENT_TASK <-  WIFI_TASK [label="4.7 > WIFI_EVENT_STA_CONNECTED"];
     }
 
 
@@ -755,10 +752,13 @@ Association Phase
 Four-way Handshake Phase
 ++++++++++++++++++++++++++
 
- - s4.1, The four-way handshake is sent out and the association timer is enabled.
- - s4.2, If the association response is not received before the association timer times out, <`WIFI_EVENT_STA_DISCONNECTED`_> will arise and the reason-code will be WIFI_REASON_ASSOC_EXPIRE. Refer to <`Wi-Fi Reason Code`_>.
- - s4.3, The association response is received and the association timer is stopped.
- - s4.4, The AP rejects the association in the response and <`WIFI_EVENT_STA_DISCONNECTED`_> arises and the reason-code will be the one specified in the association response. Refer to <`Wi-Fi Reason Code`_>.
+ - s4.1, The handshake timer is enabled, the 1/4 EAPOL is not received before the handshake timer expires, <`WIFI_EVENT_STA_DISCONNECTED`_> will arise and the reason-code will be WIFI_REASON_HANDSHAKE_TIMEOUT. Refer to <`Wi-Fi Reason Code`_>.
+ - s4.2, The 1/4 EAPOL is received.
+ - s4.3, The STA replies 2/4 EAPOL.
+ - s4.4, If the 3/4 EAPOL is not received before the handshake timer expires, <`WIFI_EVENT_STA_DISCONNECTED`_> will arise and the reason-code will be WIFI_REASON_HANDSHAKE_TIMEOUT. Refer to <`Wi-Fi Reason Code`_>.
+ - s4.5, The 3/4 EAPOL is received.
+ - s4.6, The STA replies 4/4 EAPOL.
+ - s4.7, The STA raises <`WIFI_EVENT_STA_CONNECTED`_>.
 
 
 Wi-Fi Reason Code
@@ -887,7 +887,7 @@ The table below shows the reason-code defined in {IDF_TARGET_NAME}. The first co
 |                           |       |         |                                                             |
 +---------------------------+-------+---------+-------------------------------------------------------------+
 | IE_INVALID                |   13  |    13   | Invalid element, i.e. an element whose content does not meet|
-|                           |       |         | the specifications of the Standard in Clause 8.             |
+|                           |       |         | the specifications of the Standard in frame formats clause. |
 |                           |       |         |                                                             |
 |                           |       |         | For the ESP Station, this reason is reported when:          |
 |                           |       |         |                                                             |
@@ -1093,7 +1093,7 @@ API esp_wifi_set_config() can be used to configure the station. The table below 
 +------------------+--------------------------------------------------------------+
 | scan_method      | For WIFI_FAST_SCAN scan, the scan ends when the first matched|
 |                  | AP is found, for WIFI_ALL_CHANNEL_SCAN, the scan finds all   |
-|                  | matched APs in all channels.                                 |
+|                  | matched APs on all channels.                                 |
 |                  | The default scan is WIFI_FAST_SCAN.                          |
 +------------------+--------------------------------------------------------------+
 | bssid_set        | If bssid_set is 0, the station connects to the AP whose SSID |
@@ -1142,7 +1142,7 @@ API esp_wifi_set_config() can be used to configure the station. The table below 
 +------------------+--------------------------------------------------------------+
 
 .. attention::
-    WEP/WPA security modes are deprecated in IEEE802.11-2016 specifications and are recommended not to be used. These modes can be rejected using authmode threshold by setting threshold as WPA2 by threshold.authmode as WIFI_AUTH_WPA2_PSK.
+    WEP/WPA security modes are deprecated in IEEE 802.11-2016 specifications and are recommended not to be used. These modes can be rejected using authmode threshold by setting threshold as WPA2 by threshold.authmode as WIFI_AUTH_WPA2_PSK.
 
 AP Basic Configuration
 +++++++++++++++++++++++++++++++++++++
@@ -1229,7 +1229,7 @@ Long Range (LR)
 
 Long Range (LR) mode is an Espressif-patented Wi-Fi mode which can achieve a one-kilometer line of sight range. It has better reception sensitivity, stronger anti-interference ability and longer transmission distance than the traditional 802.11B mode.
 
-LR Compitability
+LR Compatibility
 *************************
 
 Since LR is Espressif unique Wi-Fi mode, only {IDF_TARGET_NAME} devices can transmit and receive the LR data. In other words, the {IDF_TARGET_NAME} device should NOT transmit the data in LR data rate if the connected device doesn't support LR. The application can achieve this by configuring suitable Wi-Fi mode. If the negotiated mode supports LR, the {IDF_TARGET_NAME} may transmit data in LR rate, otherwise, {IDF_TARGET_NAME} will transmit all data in traditional Wi-Fi data rate.
@@ -1312,18 +1312,18 @@ The table below describes the fields in detail,  please consult local 2.4GHz RF 
 |                  |  - an ASCII 'I' character if the regulations under which the station/AP is        |
 |                  |    operating are for an indoor environment only.                                  |
 |                  |  - an ASCII 'X' character if the station/AP is operating under a noncountry       |
-|                  |    entity. The first two octets of the noncountry entity is two ASSCII 'XX'       |
+|                  |    entity. The first two octets of the noncountry entity is two ASCII 'XX'        |
 |                  |    characters.                                                                    |
 |                  |  - the binary representation of the Operating Class table number currently in use.|
-|                  |    Refer 802.11-2012 Annex E.                                                     |
+|                  |    Refer to Annex E, IEEE Std 802.11-2012.                                        |
 |                  |                                                                                   |
 +------------------+-----------------------------------------------------------------------------------+
 | schan            | Start channel, it's the minimum channel number of the regulations under which the |
 |                  | station/AP can operate.                                                           |
 |                  |                                                                                   |
 +------------------+-----------------------------------------------------------------------------------+
-| snum             | Total channel number of the regulations, e.g. if the schan=1, nchan=13, it means  |
-|                  | the station/AP can send data from channel 1 to 13.                                |
+| nchan            | Total number of channels as per the regulations, e.g. if the schan=1, nchan=13,   |
+|                  | it means the station/AP can send data from channel 1 to 13.                       |
 |                  |                                                                                   |
 +------------------+-----------------------------------------------------------------------------------+
 | policy           | Country policy, this field control which country info will be used if the         |
@@ -1343,22 +1343,14 @@ Following table depicts which country info is used in different WiFi Mode and di
 |           |                            | default country info.                                          |
 |           |                            |                                                                |
 |           |                            | For scan:                                                      |
+|           |                            |   -If schan+nchan-1 >11 :                                      |
+|           |                            |    Use active scan from schan to 11 and use passive scan       |
+|           |                            |    from 12 to schan+nchan-1.                                   |
 |           |                            |                                                                |
-|           |                            |  - before the station connects to the AP, scans channel        |
-|           |                            |    "schan" to "min(11, schan+nchan-1)" with active scan and    |
-|           |                            |    channel min(12, schan+nchan)" to 14 with passive scan.      |
-|           |                            |    E.g. if the used country info is                            |
-|           |                            |    {.cc="CN", .schan=1, .nchan=6} then 1 to 6 is active scan   |
-|           |                            |    and 7 to 14 is passive scan                                 |
-|           |                            |    If the used country info is                                 |
-|           |                            |    {.cc="CN", .schan=1, .nchan=12} then 1 to 11 is active scan |
-|           |                            |    and 12 to 14 is passive scan                                |
+|           |                            |   -If schan+nchan-1 <= 11 :                                    |
+|           |                            |    Use active scan from schan to schan+nchan-1.                |
 |           |                            |                                                                |
-|           |                            |  - after the station connects to the AP, scans channel         |
-|           |                            |    "schan" to "schan+nchan-1" with active scan and channel     |
-|           |                            |    "schan+nchan" to 14 with passive scan                       |
-|           |                            |                                                                |
-|           |                            | Always keep in mind that if if a AP with with hidden SSID      |
+|           |                            | Always keep in mind that if an AP with hidden SSID             |
 |           |                            | is set to a passive scan channel, the passive scan will not    |
 |           |                            | find it. In other words, if the application hopes to find the  |
 |           |                            | AP with hidden SSID in every channel, the policy of            |
@@ -1378,9 +1370,9 @@ Following table depicts which country info is used in different WiFi Mode and di
 | AP        | WIFI_COUNTRY_POLICY_MANUAL | Always use the configured country info                         |
 |           |                            |                                                                |
 +-----------+----------------------------+----------------------------------------------------------------+
-| Station/AP| WIFI_COUNTRY_POLICY_AUTO   | If the station doesn't connects to any AP, the AP use the      |
+|Station/AP-| WIFI_COUNTRY_POLICY_AUTO   | If the station doesn't connects to any AP, the AP use the      |
 |           |                            | configured country info.                                       |
-| coexit    |                            | If the station connects to an AP, the AP has the same          |
+|coexistence|                            | If the station connects to an AP, the AP has the same          |
 |           |                            | country info as the station.                                   |
 |           |                            |                                                                |
 |           |                            | Same as station mode with policy WIFI_COUNTRY_POLICY_AUTO      |
@@ -1389,7 +1381,7 @@ Following table depicts which country info is used in different WiFi Mode and di
 Home Channel
 *************************
 
-In AP mode, the home channel is defined as that of the AP channel. In Station mode, the home channel is defined as the channel of the AP to which the station is connected. In Station+AP mode, the home channel of AP and station must be the same. If the home channels of Station and AP are different, the station's home channel is always in priority. Take the following as an example: at the beginning, the AP is on channel 6, then the station connects to an AP whose channel is 9. Since the station's home channel has a higher priority, the AP needs to switch its channel from 6 to 9 to make sure that both station and AP have the same home channel. While switching channel, the {IDF_TARGET_NAME} in SoftAP mode will notify the connected stations about the channel migration using a Channel Switch Announcement (CSA). Stations that support channel switching will transition smoothly whereas stations who do not will disconnect and reconnect to the SoftAP.
+In AP mode, the home channel is defined as the AP channel. In Station mode, home channel is defined as the channel of AP which the station is connected to. In Station/AP-coexistence mode, the home channel of AP and station must be the same, if they are different, the station's home channel is always in priority. Take the following as an example: the AP is on channel 6, and the station connects to an AP whose channel is 9. Since the station's home channel has higher priority, the AP needs to switch its channel from 6 to make sure that it has the same home channel as the station. While switching channel, the {IDF_TARGET_NAME} in SoftAP mode will notify the connected stations about the channel migration using a Channel Switch Announcement (CSA). Station that supports channel switching will transit without disconnecting and reconnecting to the SoftAP.
 
 
 Wi-Fi Vendor IE Configuration
@@ -1456,15 +1448,6 @@ AP Sleep
 Currently {IDF_TARGET_NAME} AP doesn't support all of the power save feature defined in Wi-Fi specification. To be specific, the AP only caches unicast data for the stations connect to this AP, but doesn't cache the multicast data for the stations. If stations connected to the {IDF_TARGET_NAME} AP are power save enabled, they may experience multicast packet loss.
 
 In future, all power save features will be supported on {IDF_TARGET_NAME} AP.
-
-{IDF_TARGET_NAME} Wi-Fi Connect Crypto
---------------------------------------
-Now {IDF_TARGET_NAME} have two group crypto functions can be used when do wifi connect, one is the original functions, the other is optimized by ESP hardware:
-1. Original functions which is the source code used in the folder components/wpa_supplicant/src/crypto function;
-2. The optimized functions is in the folder components/wpa_supplicant/src/fast_crypto, these function used the hardware crypto to make it faster than origin one, the type of function's name add `fast_` to distinguish with the original one. For example, the API aes_wrap() is used to encrypt frame information when do 4 way handshake, the fast_aes_wrap() has the same result but can be faster.
-
-Two groups of crypto function can be used when register in the wpa_crypto_funcs_t, wpa2_crypto_funcs_t and wps_crypto_funcs_t structure, also we have given the recommend functions to register in the
-fast_crypto_ops.c, you can register the function as the way you need, however what should make action is that the crypto_hash_xxx function and crypto_cipher_xxx function need to register with the same function to operation. For example, if you register crypto_hash_init() function to initialize the esp_crypto_hash structure, you need use the crypto_hash_update() and crypto_hash_finish() function to finish the operation, rather than fast_crypto_hash_update() or fast_crypto_hash_finish().
 
 {IDF_TARGET_NAME} Wi-Fi Throughput
 -----------------------------------
@@ -1833,6 +1816,288 @@ So, the peak memory that the Wi-Fi driver consumes can be calculated with the fo
 
 Generally, we do not need to care about the dynamic tx long buffers and dynamic tx long long buffers, because they are management frames which only have a small impact on the system.
 
+.. _How-to-improve-Wi-Fi-performance:
+
+How to improve Wi-Fi performance
+----------------------------------
+
+The performance of {IDF_TARGET_NAME} Wi-Fi is affected by many parameters, and there are mutual constraints between each parameter. A proper configuration can not only improve performance but also increase available memory for applications and improve stability.
+
+In this section, we will briefly explain the operating mode of the Wi-Fi/LWIP protocol stack and explain the role of each parameter. We will give several recommended configuration ranks, user can choose the appropriate rank according to the usage scenario.
+
+Protocol stack operation mode
+++++++++++++++++++++++++++++++++++
+
+.. figure:: ../../_static/api-guides-WiFi-driver-how-to-improve-WiFi-performance.png
+    :align: center
+
+    {IDF_TARGET_NAME} datapath
+
+The {IDF_TARGET_NAME} protocol stack is divided into four layers: Application, LWIP, Wi-Fi, and Hardware.
+
+ - During receiving, hardware puts the received packet into DMA buffer, and then transfers it into the RX buffer of Wi-Fi, LWIP in turn for related protocol processing, and finally to the application layer. The Wi-Fi RX buffer and the LWIP RX buffer shares the same buffer by default. In other words, the Wi-Fi forwards the packet to LWIP by reference by default.
+
+ - During sending, the application copies the messages to be sent into the TX buffer of the LWIP layer for TCP/IP encapsulation. The messages will then be passed to the TX buffer of the Wi-Fi layer for MAC encapsulation and wait to be sent.
+
+Parameters
+++++++++++++++
+
+Increasing the size or number of the buffers mentioned above properly can improve Wi-Fi performance. Meanwhile, it will reduce available memory to the application. The following is an introduction to the parameters that users need to configure:
+
+**RX direction:**
+
+ - :ref:`CONFIG_ESP32_WIFI_STATIC_RX_BUFFER_NUM`
+    This parameter indicates the number of DMA buffer at the hardware layer. Increasing this parameter will increase the sender's one-time receiving throughput, thereby improving the Wi-Fi protocol stack ability to handle burst traffic.
+
+ - :ref:`CONFIG_ESP32_WIFI_DYNAMIC_RX_BUFFER_NUM`
+    This parameter indicates the number of RX buffer in the Wi-Fi layer. Increasing this parameter will improve the performance of packet reception. This parameter needs to match the RX buffer size of the LWIP layer.
+
+ - :ref:`CONFIG_ESP32_WIFI_RX_BA_WIN`
+    This parameter indicates the size of the AMPDU BA Window at the receiving end. This parameter should be configured to the smaller value between twice of :ref:`CONFIG_ESP32_WIFI_STATIC_RX_BUFFER_NUM` and :ref:`CONFIG_ESP32_WIFI_DYNAMIC_RX_BUFFER_NUM`.
+
+ - :ref:`CONFIG_LWIP_TCP_WND_DEFAULT`
+    This parameter represents the RX buffer size of the LWIP layer for each TCP stream. Its value should be configured to the value of WIFI_DYNAMIC_RX_BUFFER_NUM(KB) to reach a high and stable performance. Meanwhile, in case of multiple streams, this value needs to be reduced proportionally.
+
+**TX direction:**
+
+ - :ref:`CONFIG_ESP32_WIFI_STATIC_TX_BUFFER_NUM`
+    This parameter indicates the type of TX buffer, it is recommended to configure it as a dynamic buffer, which can make full use of memory.
+
+ - :ref:`CONFIG_ESP32_WIFI_DYNAMIC_TX_BUFFER_NUM`
+    This parameter indicates the number of TX buffer on the Wi-Fi layer. Increasing this parameter will improve the performance of packet sending. The parameter value needs to match the TX buffer size of the LWIP layer.
+
+ - :ref:`CONFIG_LWIP_TCP_SND_BUF_DEFAULT`
+    This parameter represents the TX buffer size of the LWIP layer for each TCP stream. Its value should be configured to the value of WIFI_DYNAMIC_TX_BUFFER_NUM(KB) to reach a high and stable performance. In case of multiple streams, this value needs to be reduced proportionally.
+
+**Throughput optimization by placing code in IRAM:**
+
+ - :ref:`CONFIG_ESP32_WIFI_IRAM_OPT`
+    If this option is enabled, some Wi-Fi functions are moved to IRAM, improving throughput. This increases IRAM usage by 15 kB.
+
+ - :ref:`CONFIG_ESP32_WIFI_RX_IRAM_OPT`
+    If this option is enabled, some Wi-Fi RX functions are moved to IRAM, improving throughput. This increases IRAM usage by 16 kB.
+
+ - :ref:`CONFIG_LWIP_IRAM_OPTIMIZATION`
+    If this option is enabled, some LWIP functions are moved to IRAM, improving throughput. This increases IRAM usage by 13 kB.
+
+.. only:: esp32s2
+
+    **CACHE:**    
+
+     - :ref:`CONFIG_ESP32S2_INSTRUCTION_CACHE_SIZE`
+        Configure the size of the instruction cache.
+
+     - :ref:`CONFIG_ESP32S2_INSTRUCTION_CACHE_LINE_SIZE`
+        Configure the width of the instruction cache bus.
+
+.. note::
+    The buffer size mentioned above is fixed as 1.6 KB.
+
+How to configure parameters
+++++++++++++++++++++++++++++
+
+{IDF_TARGET_NAME}'s memory is shared by protocol stack and applications.
+
+Here, we have given several configuration ranks. In most cases, the user should select a suitable rank for parameter configuration according to the size of the memory occupied by the application.
+
+The parameters not mentioned in the following table should be set to the default.
+
+.. only:: esp32
+
+    +----------------------------+-------+----------+------------------+----------+---------+---------------+---------+
+    | Rank                       | Iperf | TX prior | High-performance | RX prior | Default | Memory saving | Minimum |
+    +============================+=======+==========+==================+==========+=========+===============+=========+
+    | Available memory(KB)       | 37.1  | 113.8    | 123.3            | 145.5    | 144.5   | 170.2         | 185.2   |
+    +----------------------------+-------+----------+------------------+----------+---------+---------------+---------+
+    | WIFI_STATIC_RX_BUFFER_NUM  | 16    | 6        | 6                | 6        | 6       | 6             | 4       |
+    +----------------------------+-------+----------+------------------+----------+---------+---------------+---------+
+    | WIFI_DYNAMIC_RX_BUFFER_NUM | 64    | 16       | 24               | 34       | 20      | 12            | 8       |
+    +----------------------------+-------+----------+------------------+----------+---------+---------------+---------+
+    | WIFI_DYNAMIC_TX_BUFFER_NUM | 64    | 28       | 24               | 18       | 20      | 12            | 8       |
+    +----------------------------+-------+----------+------------------+----------+---------+---------------+---------+
+    | WIFI_RX_BA_WIN             | 32    |  8       | 12               | 12       | 10      |  6            | Disable |
+    +----------------------------+-------+----------+------------------+----------+---------+---------------+---------+
+    | TCP_SND_BUF_DEFAULT(KB)    | 65    | 28       | 24               | 18       | 20      | 12            | 8       |
+    +----------------------------+-------+----------+------------------+----------+---------+---------------+---------+
+    | TCP_WND_DEFAULT(KB)        | 65    | 16       | 24               | 34       | 20      | 12            | 8       |
+    +----------------------------+-------+----------+------------------+----------+---------+---------------+---------+
+    | WIFI_IRAM_OPT              | 15    | 15       | 15               | 15       | 15      | 15            | 15      |
+    +----------------------------+-------+----------+------------------+----------+---------+---------------+---------+
+    | WIFI_RX_IRAM_OPT           | 16    | 16       | 16               | 16       | 16      | 16            | 16      |
+    +----------------------------+-------+----------+------------------+----------+---------+---------------+---------+
+    | LWIP_IRAM_OPTIMIZATION     | 13    | 13       | 13               | 13       | 13      | 13            | 13      |
+    +----------------------------+-------+----------+------------------+----------+---------+---------------+---------+
+    | TCP TX throughput          | 74.6  | 50.8     | 46.5             | 39.9     | 44.2    | 33.8          | 25.6    |
+    +----------------------------+-------+----------+------------------+----------+---------+---------------+---------+
+    | TCP RX throughput          | 63.6  | 35.5     | 42.3             | 48.5     | 40.5    | 30.1          | 27.8    |
+    +----------------------------+-------+----------+------------------+----------+---------+---------------+---------+
+    | UDP TX throughput          | 76.2  | 75.1     | 74.1             | 72.4     | 69.6    | 64.1          | 36.5    |
+    +----------------------------+-------+----------+------------------+----------+---------+---------------+---------+
+    | UDP RX throughput          | 83.1  | 66.3     | 75.1             | 75.6     | 73.1    | 65.3          | 54.7    |
+    +----------------------------+-------+----------+------------------+----------+---------+---------------+---------+
+
+.. only:: esp32s2
+
+    +----------------------------+-------+------------------+---------+---------------+---------+
+    | Rank                       | Iperf | High-performance | Default | Memory saving | Minimum |
+    +============================+=======+==================+=========+===============+=========+
+    | Available memory(KB)       | 4.1   | 24.2             | 78.4    | 86.5          | 116.4   | 
+    +----------------------------+-------+------------------+---------+---------------+---------+
+    | WIFI_STATIC_RX_BUFFER_NUM  | 8     |6                 | 6       | 4             | 3       | 
+    +----------------------------+-------+------------------+---------+---------------+---------+
+    | WIFI_DYNAMIC_RX_BUFFER_NUM | 24    | 18               | 12      | 8             | 6       | 
+    +----------------------------+-------+------------------+---------+---------------+---------+
+    | WIFI_DYNAMIC_TX_BUFFER_NUM | 24    | 18               | 12      | 8             | 6       | 
+    +----------------------------+-------+------------------+---------+---------------+---------+
+    | WIFI_RX_BA_WIN             | 12    | 9                | 6       | 4             | 3       | 
+    +----------------------------+-------+------------------+---------+---------------+---------+
+    | TCP_SND_BUF_DEFAULT(KB)    | 24    | 18               | 12      | 8             | 6       |  
+    +----------------------------+-------+------------------+---------+---------------+---------+ 
+    | TCP_WND_DEFAULT(KB)        | 24    | 18               | 12      | 8             | 6       | 
+    +----------------------------+-------+------------------+---------+---------------+---------+ 
+    | WIFI_IRAM_OPT              | 15    | 15               | 15      | 15            | 0       |
+    +----------------------------+-------+------------------+---------+---------------+---------+  
+    | WIFI_RX_IRAM_OPT           | 16    | 16               | 16      | 0             | 0       |  
+    +----------------------------+-------+------------------+---------+---------------+---------+ 
+    | LWIP_IRAM_OPTIMIZATION     | 13    | 13               | 0       | 0             | 0       |  
+    +----------------------------+-------+------------------+---------+---------------+---------+ 
+    | INSTRUCTION_CACHE          | 16    | 16               | 16      | 16            | 8       | 
+    +----------------------------+-------+------------------+---------+---------------+---------+ 
+    | INSTRUCTION_CACHE_LINE     | 16    | 16               | 16      | 16            | 16      |  
+    +----------------------------+-------+------------------+---------+---------------+---------+
+    | TCP TX throughput          | 37.6  | 33.1             | 22.5    | 12.2          | 5.5     | 
+    +----------------------------+-------+------------------+---------+---------------+---------+
+    | TCP RX throughput          | 31.5  | 28.1             | 20.1    | 13.1          | 7.2     | 
+    +----------------------------+-------+------------------+---------+---------------+---------+
+    | UDP TX throughput          | 58.1  | 57.3             | 28.1    | 22.6          | 8.7     | 
+    +----------------------------+-------+------------------+---------+---------------+---------+
+    | UDP RX throughput          | 78.1  | 66.7             | 65.3    | 53.8          | 28.5    | 
+    +----------------------------+-------+------------------+---------+---------------+---------+  
+
+.. note::
+    The result is tested with a single stream in a shielded box using an ASUS RT-N66U router.
+    {IDF_TARGET_NAME}'s CPU is dual core with 240 MHz, {IDF_TARGET_NAME}'s flash is in QIO mode with 80 MHz.
+
+.. only:: esp32
+
+    **Ranks:**
+
+     - **Iperf rank** 
+        {IDF_TARGET_NAME} extreme performance rank used to test extreme performance.
+
+     - **High-performance rank** 
+        The {IDF_TARGET_NAME}'s high-performance configuration rank, suitable for scenarios that the application occupies less memory and has high-performance requirements. In this rank, users can choose to use the RX prior rank or the TX prior rank according to the usage scenario.
+
+     - **Default rank** 
+        {IDF_TARGET_NAME}'s default configuration rank, the available memory, and performance are in balance.
+
+     - **Memory saving rank** 
+        This rank is suitable for scenarios where the application requires a large amount of memory, and the transceiver performance will be reduced in this rank.
+
+     - **Minimum rank** 
+        This is the minimum configuration rank of {IDF_TARGET_NAME}. The protocol stack only uses the necessary memory for running. It is suitable for scenarios that have no requirement for performance and the application requires lots of space.
+
+.. only:: esp32s2
+
+    **Ranks:**
+
+     - **Iperf rank** 
+        {IDF_TARGET_NAME} extreme performance rank used to test extreme performance.
+
+     - **High-performance rank** 
+        The {IDF_TARGET_NAME}'s high-performance configuration rank, suitable for scenarios that the application occupies less memory and has high-performance requirements.
+
+     - **Default rank** 
+        {IDF_TARGET_NAME}'s default configuration rank, the available memory, and performance are in balance.
+
+     - **Memory saving rank** 
+        This rank is suitable for scenarios where the application requires a large amount of memory, and the transceiver performance will be reduced in this rank.
+
+     - **Minimum rank** 
+        This is the minimum configuration rank of {IDF_TARGET_NAME}. The protocol stack only uses the necessary memory for running. It is suitable for scenarios that have no requirement for performance and the application requires lots of space.
+
+Using PSRAM
+++++++++++++++++++++++++++++
+
+PSRAM is generally used when the application takes up a lot of memory. In this mode, the :ref:`CONFIG_ESP32_WIFI_TX_BUFFER` is forced to be static. :ref:`CONFIG_ESP32_WIFI_STATIC_TX_BUFFER_NUM` indicates the number of DMA buffers at the hardware layer, increase this parameter can improve performance.
+The following are the recommended ranks for using PSRAM:
+
+.. only:: esp32
+
+    +----------------------------+-------+---------+---------------+---------+
+    |         Rank               | Iperf | Default | Memory saving | Minimum |
+    +============================+=======+=========+===============+=========+
+    | Available memory(KB)       | 113.8 | 152.4   |     181.2     |   202.6 |
+    +----------------------------+-------+---------+---------------+---------+
+    | WIFI_STATIC_RX_BUFFER_NUM  | 16    | 8       | 4             | 2       |
+    +----------------------------+-------+---------+---------------+---------+
+    | WIFI_DYNAMIC_RX_BUFFER_NUM | 128   | 128     | 128           | 128     |
+    +----------------------------+-------+---------+---------------+---------+
+    | WIFI_STATIC_TX_BUFFER_NUM  | 16    | 8       | 4             |       2 |
+    +----------------------------+-------+---------+---------------+---------+
+    | WIFI_RX_BA_WIN             |    16 |      16 |             8 | Disable |
+    +----------------------------+-------+---------+---------------+---------+
+    | TCP_SND_BUF_DEFAULT(KB)    |    65 |      65 |            65 |      65 |
+    +----------------------------+-------+---------+---------------+---------+
+    | TCP_WND_DEFAULT(KB)        |    65 |      65 |            65 |      65 |
+    +----------------------------+-------+---------+---------------+---------+
+    | WIFI_IRAM_OPT              |    15 |     15  |            15 |       0 |
+    +----------------------------+-------+---------+---------------+---------+
+    | WIFI_RX_IRAM_OPT           |    16 |     16  |             0 |       0 |
+    +----------------------------+-------+---------+---------------+---------+
+    | LWIP_IRAM_OPTIMIZATION     |    13 |       0 |             0 |       0 |
+    +----------------------------+-------+---------+---------------+---------+
+    | TCP TX throughput          | 37.5  |   31.7  |          21.7 |    14.6 |
+    +----------------------------+-------+---------+---------------+---------+
+    | TCP RX throughput          |  31.5 |    29.8 |          26.5 |    21.1 |
+    +----------------------------+-------+---------+---------------+---------+
+    | UDP TX throughput          | 69.1  |   31.5  |          27.1 |    24.1 |
+    +----------------------------+-------+---------+---------------+---------+
+    | UDP RX throughput          |  40.1 |    38.5 |          37.5 |    36.9 |
+    +----------------------------+-------+---------+---------------+---------+
+
+.. only:: esp32s2
+
+    +----------------------------+-------+---------+---------------+---------+
+    |         Rank               | Iperf | Default | Memory saving | Minimum |
+    +============================+=======+=========+===============+=========+
+    | Available memory(KB)       | 70.6  | 96.4    |     118.8     |   148.2 |
+    +----------------------------+-------+---------+---------------+---------+
+    | WIFI_STATIC_RX_BUFFER_NUM  | 8     | 8       | 6             | 4       |
+    +----------------------------+-------+---------+---------------+---------+
+    | WIFI_DYNAMIC_RX_BUFFER_NUM | 64    | 64      | 64            | 64      |
+    +----------------------------+-------+---------+---------------+---------+
+    | WIFI_STATIC_TX_BUFFER_NUM  | 16    | 8       | 6             |       4 |
+    +----------------------------+-------+---------+---------------+---------+
+    | WIFI_RX_BA_WIN             |    16 |      6  |            6  | Disable |
+    +----------------------------+-------+---------+---------------+---------+
+    | TCP_SND_BUF_DEFAULT(KB)    |    32 |      32 |            32 |      32 |
+    +----------------------------+-------+---------+---------------+---------+
+    | TCP_WND_DEFAULT(KB)        |    32 |      32 |            32 |      32 |
+    +----------------------------+-------+---------+---------------+---------+
+    | WIFI_IRAM_OPT              |    15 |     15  |            15 |       0 |
+    +----------------------------+-------+---------+---------------+---------+
+    | WIFI_RX_IRAM_OPT           |    16 |     16  |             0 |       0 |
+    +----------------------------+-------+---------+---------------+---------+
+    | LWIP_IRAM_OPTIMIZATION     |    13 |       0 |             0 |       0 |
+    +----------------------------+-------+---------+---------------+---------+
+    | INSTRUCTION_CACHE          |    16 |      16 |            16 |      8  |
+    +----------------------------+-------+---------+---------------+---------+
+    | INSTRUCTION_CACHE_LINE     |    16 |      16 |            16 |      16 |
+    +----------------------------+-------+---------+---------------+---------+
+    | DATA_CACHE                 |    8  |       8 |             8 |       8 |
+    +----------------------------+-------+---------+---------------+---------+
+    | DATA_CACHE_LINE            |    32 |      32 |            32 |      32 |
+    +----------------------------+-------+---------+---------------+---------+
+    | TCP TX throughput          |  40.1 |    29.2 |          20.1 |    8.9  |
+    +----------------------------+-------+---------+---------------+---------+    
+    | TCP RX throughput          | 21.9  |   16.8  |          14.8 |    9.6  |
+    +----------------------------+-------+---------+---------------+---------+
+    | UDP TX throughput          | 50.1  |   25.7  |          22.4 |   10.2  |
+    +----------------------------+-------+---------+---------------+---------+
+    | UDP RX throughput          |  45.3 |    43.1 |          28.5 |   15.1  |
+    +----------------------------+-------+---------+---------------+---------+   
+
 Wi-Fi Menuconfig
 -----------------------
 
@@ -2009,4 +2274,5 @@ Please refer to a separate document with :doc:`wireshark-user-guide`.
     :hidden:
 
     wireshark-user-guide
+
 

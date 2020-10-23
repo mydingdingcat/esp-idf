@@ -45,6 +45,12 @@
 #include "soc/extmem_reg.h"
 #include "soc/cache_memory.h"
 #include "soc/rtc_cntl_reg.h"
+#elif CONFIG_IDF_TARGET_ESP32S3
+#include "esp32s3/cache_err_int.h"
+#include "esp32s3/memprot.h"
+#include "soc/extmem_reg.h"
+#include "soc/cache_memory.h"
+#include "soc/rtc_cntl_reg.h"
 #endif
 
 #include "esp_private/panic_internal.h"
@@ -365,18 +371,90 @@ static inline void print_memprot_err_details(const void *f)
 {
     uint32_t *fault_addr;
     uint32_t op_type, op_subtype;
-    mem_type_prot_t mem_type = esp_memprot_get_intr_memtype();
+    mem_type_prot_t mem_type = esp_memprot_get_active_intr_memtype();
     esp_memprot_get_fault_status( mem_type, &fault_addr, &op_type, &op_subtype );
 
     char *operation_type = "Write";
     if ( op_type == 0 ) {
-        operation_type = (mem_type == MEMPROT_IRAM0 && op_subtype == 0) ? "Instruction fetch" : "Read";
+        operation_type = (mem_type == MEMPROT_IRAM0_SRAM && op_subtype == 0) ? "Instruction fetch" : "Read";
     }
 
     panic_print_str( operation_type );
     panic_print_str( " operation at address 0x" );
     panic_print_hex( (uint32_t)fault_addr );
     panic_print_str(" not permitted.\r\n");
+}
+
+#elif CONFIG_IDF_TARGET_ESP32S3
+static inline void print_cache_err_details(const void* f)
+{
+    uint32_t vaddr = 0, size = 0;
+    uint32_t status;
+    status = REG_READ(EXTMEM_CACHE_ILG_INT_ST_REG);
+    for (int i = 0; i < 32; i++) {
+        switch (status & BIT(i)) {
+        case EXTMEM_ICACHE_SYNC_OP_FAULT_ST:
+            //TODO, which size should fetch
+            //vaddr = REG_READ(EXTMEM_ICACHE_MEM_SYNC0_REG);
+            //size = REG_READ(EXTMEM_ICACHE_MEM_SYNC1_REG);
+            panic_print_str("Icache sync parameter configuration error, the error address and size is 0x");
+            panic_print_hex(vaddr);
+            panic_print_str("(0x");
+            panic_print_hex(size);
+            panic_print_str(")\r\n");
+            break;
+        case EXTMEM_ICACHE_PRELOAD_OP_FAULT_ST:
+            //TODO, which size should fetch
+            vaddr = REG_READ(EXTMEM_ICACHE_PRELOAD_ADDR_REG);
+            size = REG_READ(EXTMEM_ICACHE_PRELOAD_SIZE_REG);
+            panic_print_str("Icache preload parameter configuration error, the error address and size is 0x");
+            panic_print_hex(vaddr);
+            panic_print_str("(0x");
+            panic_print_hex(size);
+            panic_print_str(")\r\n");
+            break;
+        case EXTMEM_DCACHE_SYNC_OP_FAULT_ST:
+            //TODO, which size should fetch
+            //vaddr = REG_READ(EXTMEM_DCACHE_MEM_SYNC0_REG);
+            //size = REG_READ(EXTMEM_DCACHE_MEM_SYNC1_REG);
+            panic_print_str("Dcache sync parameter configuration error, the error address and size is 0x");
+            panic_print_hex(vaddr);
+            panic_print_str("(0x");
+            panic_print_hex(size);
+            panic_print_str(")\r\n");
+            break;
+        case EXTMEM_DCACHE_PRELOAD_OP_FAULT_ST:
+            //TODO, which size should fetch
+            vaddr = REG_READ(EXTMEM_DCACHE_PRELOAD_ADDR_REG);
+            size = REG_READ(EXTMEM_DCACHE_PRELOAD_SIZE_REG);
+            panic_print_str("Dcache preload parameter configuration error, the error address and size is 0x");
+            panic_print_hex(vaddr);
+            panic_print_str("(0x");
+            panic_print_hex(size);
+            panic_print_str(")\r\n");
+            break;
+        case EXTMEM_DCACHE_WRITE_FLASH_ST:
+            panic_print_str("Write back error occurred while dcache tries to write back to flash\r\n");
+            break;
+        case EXTMEM_MMU_ENTRY_FAULT_ST:
+            vaddr = REG_READ(EXTMEM_CACHE_MMU_FAULT_VADDR_REG);
+            panic_print_str("MMU entry fault error occurred while accessing the address 0x");
+            panic_print_hex(vaddr);
+
+            if (REG_READ(EXTMEM_CACHE_MMU_FAULT_CONTENT_REG) & MMU_INVALID) {
+                panic_print_str(" (invalid mmu entry)");
+            }
+            panic_print_str("\r\n");
+            break;
+        default:
+            break;
+        }
+    }
+    panic_print_str("\r\n");
+}
+
+static inline void print_memprot_err_details(const void *f)
+{
 }
 #endif
 
@@ -409,7 +487,7 @@ static void frame_to_panic_info(XtExcFrame *frame, panic_info_t *info, bool pseu
             "Interrupt wdt timeout on CPU1",
 #if CONFIG_IDF_TARGET_ESP32
             "Cache disabled but cached memory region accessed",
-#elif CONFIG_IDF_TARGET_ESP32S2
+#elif CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
             "Cache exception",
 #endif
         };
@@ -426,9 +504,9 @@ static void frame_to_panic_info(XtExcFrame *frame, panic_info_t *info, bool pseu
             info->exception = PANIC_EXCEPTION_DEBUG;
         }
 
-#if CONFIG_IDF_TARGET_ESP32S2
+#if CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
         if (frame->exccause == PANIC_RSN_CACHEERR) {
-            if ( esp_memprot_is_assoc_intr_any() ) {
+            if ( esp_memprot_get_active_intr_memtype() != MEMPROT_NONE ) {
                 info->details = print_memprot_err_details;
                 info->reason = "Memory protection fault";
             } else {

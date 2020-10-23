@@ -32,7 +32,7 @@
 #include "soc/cpu.h"
 #include "soc/rtc.h"
 #include "soc/dport_reg.h"
-#include "soc/uart_caps.h"
+#include "soc/soc_caps.h"
 
 #include "hal/wdt_hal.h"
 #include "hal/rtc_io_hal.h"
@@ -48,14 +48,16 @@
 #include "esp32/rom/cache.h"
 #include "esp32/clk.h"
 #include "esp32/rom/rtc.h"
-#include "esp32/rom/uart.h"
 #elif CONFIG_IDF_TARGET_ESP32S2
 #include "esp32s2/clk.h"
 #include "esp32s2/rom/cache.h"
 #include "esp32s2/rom/rtc.h"
-#include "esp32s2/rom/ets_sys.h"
 #include "soc/extmem_reg.h"
-#include "esp32s2/rom/uart.h"
+#elif CONFIG_IDF_TARGET_ESP32S3
+#include "esp32s3/clk.h"
+#include "esp32s3/rom/cache.h"
+#include "esp32s3/rom/rtc.h"
+#include "soc/extmem_reg.h"
 #endif
 
 // If light sleep time is less than that, don't power down flash
@@ -68,6 +70,8 @@
 #define DEFAULT_CPU_FREQ_MHZ        CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ
 #elif CONFIG_IDF_TARGET_ESP32S2
 #define DEFAULT_CPU_FREQ_MHZ        CONFIG_ESP32S2_DEFAULT_CPU_FREQ_MHZ
+#elif CONFIG_IDF_TARGET_ESP32S3
+#define DEFAULT_CPU_FREQ_MHZ        CONFIG_ESP32S3_DEFAULT_CPU_FREQ_MHZ
 #endif
 
 #if defined(CONFIG_IDF_TARGET_ESP32)
@@ -131,8 +135,8 @@ static sleep_config_t s_config = {
 static bool s_light_sleep_wakeup = false;
 
 /* Updating RTC_MEMORY_CRC_REG register via set_rtc_memory_crc()
-   is not thread-safe. */
-static _lock_t lock_rtc_memory_crc;
+   is not thread-safe, so we need to disable interrupts before going to deep sleep. */
+static portMUX_TYPE spinlock_rtc_deep_sleep = portMUX_INITIALIZER_UNLOCKED;
 
 static const char* TAG = "sleep";
 
@@ -151,16 +155,6 @@ static void touch_wakeup_prepare(void);
 */
 esp_deep_sleep_wake_stub_fn_t esp_get_deep_sleep_wake_stub(void)
 {
-    _lock_acquire(&lock_rtc_memory_crc);
-    uint32_t stored_crc = REG_READ(RTC_MEMORY_CRC_REG);
-    set_rtc_memory_crc();
-    uint32_t calc_crc = REG_READ(RTC_MEMORY_CRC_REG);
-    REG_WRITE(RTC_MEMORY_CRC_REG, stored_crc);
-    _lock_release(&lock_rtc_memory_crc);
-
-    if(stored_crc != calc_crc) {
-        return NULL;
-    }
     esp_deep_sleep_wake_stub_fn_t stub_ptr = (esp_deep_sleep_wake_stub_fn_t) REG_READ(RTC_ENTRY_ADDR_REG);
     if (!esp_ptr_executable(stub_ptr)) {
         return NULL;
@@ -170,10 +164,7 @@ esp_deep_sleep_wake_stub_fn_t esp_get_deep_sleep_wake_stub(void)
 
 void esp_set_deep_sleep_wake_stub(esp_deep_sleep_wake_stub_fn_t new_stub)
 {
-    _lock_acquire(&lock_rtc_memory_crc);
     REG_WRITE(RTC_ENTRY_ADDR_REG, (uint32_t)new_stub);
-    set_rtc_memory_crc();
-    _lock_release(&lock_rtc_memory_crc);
 }
 
 void RTC_IRAM_ATTR esp_default_wake_deep_sleep(void) {
@@ -256,12 +247,25 @@ static void IRAM_ATTR resume_uarts(void)
     }
 }
 
+inline static uint32_t IRAM_ATTR call_rtc_sleep_start(uint32_t reject_triggers);
+
 static uint32_t IRAM_ATTR esp_sleep_start(uint32_t pd_flags)
 {
     // Stop UART output so that output is not lost due to APB frequency change.
     // For light sleep, suspend UART output — it will resume after wakeup.
     // For deep sleep, wait for the contents of UART FIFO to be sent.
-    if (pd_flags & RTC_SLEEP_PD_DIG) {
+    bool deep_sleep = pd_flags & RTC_SLEEP_PD_DIG;
+
+#if !CONFIG_FREERTOS_UNICORE && ESP32S3_ALLOW_RTC_FAST_MEM_AS_HEAP
+    /* Currently only safe to use deep sleep wake stub & RTC memory as heap in single core mode.
+
+       For ESP32-S3, either disable ESP32S3_ALLOW_RTC_FAST_MEM_AS_HEAP in config or find a way to set the
+       deep sleep wake stub to NULL.
+     */
+    assert(!deep_sleep || esp_get_deep_sleep_wake_stub() == NULL);
+#endif
+
+    if (deep_sleep) {
         flush_uarts();
     } else {
         suspend_uarts();
@@ -316,11 +320,29 @@ static uint32_t IRAM_ATTR esp_sleep_start(uint32_t pd_flags)
         timer_wakeup_prepare();
     }
 
-#ifdef CONFIG_IDF_TARGET_ESP32
-    uint32_t result = rtc_sleep_start(s_config.wakeup_triggers, reject_triggers);
-#elif CONFIG_IDF_TARGET_ESP32S2
-    uint32_t result = rtc_sleep_start(s_config.wakeup_triggers, reject_triggers, 1);
+    uint32_t result;
+    if (deep_sleep) {
+        /* Disable interrupts in case another task writes to RTC memory while we
+         * calculate RTC memory CRC
+         *
+         * Note: for ESP32-S3 running in dual core mode this is currently not enough,
+         * see the assert at top of this function.
+         */
+        portENTER_CRITICAL(&spinlock_rtc_deep_sleep);
+
+#if !CONFIG_ESP32_ALLOW_RTC_FAST_MEM_AS_HEAP && !CONFIG_ESP32S2_ALLOW_RTC_FAST_MEM_AS_HEAP && !CONFIG_ESP32S3_ALLOW_RTC_FAST_MEM_AS_HEAP
+        /* If not possible stack is in RTC FAST memory, use the ROM function to calculate the CRC and save ~140 bytes IRAM */
+        set_rtc_memory_crc();
+        result = call_rtc_sleep_start(reject_triggers);
+#else
+        /* Otherwise, need to call the dedicated soc function for this */
+        result = rtc_deep_sleep_start(s_config.wakeup_triggers, reject_triggers);
 #endif
+
+        portEXIT_CRITICAL(&spinlock_rtc_deep_sleep);
+    } else {
+        result = call_rtc_sleep_start(reject_triggers);
+    }
 
     // Restore CPU frequency
     rtc_clk_cpu_freq_set_config(&cpu_freq_config);
@@ -329,6 +351,15 @@ static uint32_t IRAM_ATTR esp_sleep_start(uint32_t pd_flags)
     resume_uarts();
 
     return result;
+}
+
+inline static uint32_t IRAM_ATTR call_rtc_sleep_start(uint32_t reject_triggers)
+{
+#ifdef CONFIG_IDF_TARGET_ESP32
+        return rtc_sleep_start(s_config.wakeup_triggers, reject_triggers);
+#else
+        return rtc_sleep_start(s_config.wakeup_triggers, reject_triggers, 1);
+#endif
 }
 
 void IRAM_ATTR esp_deep_sleep_start(void)
@@ -524,7 +555,7 @@ esp_err_t esp_sleep_enable_ulp_wakeup(void)
 #else // CONFIG_ESP32_ULP_COPROC_ENABLED
     return ESP_ERR_INVALID_STATE;
 #endif // CONFIG_ESP32_ULP_COPROC_ENABLED
-#elif CONFIG_IDF_TARGET_ESP32S2
+#elif CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
     s_config.wakeup_triggers |= (RTC_ULP_TRIG_EN | RTC_COCPU_TRIG_EN | RTC_COCPU_TRAP_TRIG_EN);
     return ESP_OK;
 #endif
@@ -556,7 +587,7 @@ static void touch_wakeup_prepare(void)
 {
     touch_pad_sleep_channel_t slp_config;
     touch_pad_fsm_stop();
-    touch_pad_clear_channel_mask(SOC_TOUCH_SENSOR_BIT_MASK_MAX);
+    touch_pad_clear_channel_mask(TOUCH_PAD_BIT_MASK_ALL);
     touch_pad_sleep_channel_get_info(&slp_config);
     touch_pad_set_channel_mask(BIT(slp_config.touch_num));
     touch_pad_fsm_start();
@@ -720,6 +751,9 @@ esp_err_t esp_sleep_enable_wifi_wakeup(void)
 #elif CONFIG_IDF_TARGET_ESP32S2
     s_config.wakeup_triggers |= RTC_WIFI_TRIG_EN;
     return ESP_OK;
+#elif CONFIG_IDF_TARGET_ESP32S3
+    s_config.wakeup_triggers |= RTC_MAC_TRIG_EN;
+    return ESP_OK;
 #endif
 }
 
@@ -732,7 +766,7 @@ esp_sleep_wakeup_cause_t esp_sleep_get_wakeup_cause(void)
 
 #ifdef CONFIG_IDF_TARGET_ESP32
     uint32_t wakeup_cause = REG_GET_FIELD(RTC_CNTL_WAKEUP_STATE_REG, RTC_CNTL_WAKEUP_CAUSE);
-#elif CONFIG_IDF_TARGET_ESP32S2
+#elif CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
     uint32_t wakeup_cause = REG_GET_FIELD(RTC_CNTL_SLP_WAKEUP_CAUSE_REG, RTC_CNTL_WAKEUP_CAUSE);
 #endif
 

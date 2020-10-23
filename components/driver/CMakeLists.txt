@@ -1,3 +1,5 @@
+idf_build_get_property(target IDF_TARGET)
+
 set(srcs
     "adc_common.c"
     "dac_common.c"
@@ -23,9 +25,9 @@ set(srcs
     "twai.c"
     "uart.c")
 
-set(includes "include")
+set(includes "include" "${target}/include")
 
-if(IDF_TARGET STREQUAL "esp32")
+if(${target} STREQUAL "esp32")
     # SDMMC and MCPWM are in ESP32 only.
     list(APPEND srcs "mcpwm.c"
                      "sdio_slave.c"
@@ -37,7 +39,7 @@ if(IDF_TARGET STREQUAL "esp32")
     list(APPEND includes "esp32/include")
 endif()
 
-if(IDF_TARGET STREQUAL "esp32s2")
+if(${target} STREQUAL "esp32s2")
     list(APPEND srcs "esp32s2/rtc_tempsensor.c"
                      "esp32s2/touch_sensor.c"
                      "esp32s2/adc.c"
@@ -50,8 +52,8 @@ endif()
 idf_component_register(SRCS "${srcs}"
                     INCLUDE_DIRS ${includes}
                     PRIV_INCLUDE_DIRS "include/driver"
-                    PRIV_REQUIRES efuse esp_timer esp_ipc
-                    REQUIRES esp_ringbuf freertos soc hal) # cannot totally hide soc headers, since there are a lot arguments in the driver are chip-dependent
+                    PRIV_REQUIRES efuse esp_pm esp_timer esp_ipc
+                    REQUIRES esp_ringbuf freertos soc hal) #cannot totally hide soc headers, since there are a lot arguments in the driver are chip-dependent
 
 # uses C11 atomic feature
 set_source_files_properties(spi_master.c PROPERTIES COMPILE_FLAGS -std=gnu11)

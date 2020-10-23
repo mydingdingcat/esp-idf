@@ -109,7 +109,6 @@
 #include "esp_intr_alloc.h"
 #include "esp_log.h"
 #include "sdkconfig.h"
-#include "esp_compiler.h"
 
 #include "esp_task_wdt.h"
 #include "esp_task.h"
@@ -127,6 +126,8 @@
 #include "esp32/spiram.h"
 #elif CONFIG_IDF_TARGET_ESP32S2
 #include "esp32s2/spiram.h"
+#elif CONFIG_IDF_TARGET_ESP32S3
+#include "esp32s3/spiram.h"
 #endif
 
 #include "esp_private/startup_internal.h" // [refactor-todo] for g_spiram_ok
@@ -288,6 +289,7 @@ void vPortEndScheduler( void )
 {
 	/* It is unlikely that the Xtensa port will get stopped.  If required simply
 	disable the tick interrupt here. */
+	abort();
 }
 
 /*-----------------------------------------------------------*/
@@ -547,7 +549,7 @@ static void main_task(void* args)
 
 
 #if !CONFIG_FREERTOS_UNICORE
-void start_app_other_cores(void)
+void esp_startup_start_app_other_cores(void)
 {
 	// For now, we only support up to two core: 0 and 1.
 	if (xPortGetCoreID() >= 2) {
@@ -581,7 +583,7 @@ void start_app_other_cores(void)
 }
 #endif
 
-void start_app(void)
+void esp_startup_start_app(void)
 {
 #if CONFIG_ESP_INT_WDT
 	esp_int_wdt_init();

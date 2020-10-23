@@ -4,7 +4,7 @@ idf_build_get_property(python PYTHON)
 idf_component_register(SRCS "esp_crt_bundle/esp_crt_bundle.c"
     INCLUDE_DIRS "port/include" "mbedtls/include" "esp_crt_bundle/include"
     REQUIRES lwip
-    PRIV_REQUIRES soc
+    PRIV_REQUIRES esp_pm soc
     )
 
 if(CONFIG_MBEDTLS_CERTIFICATE_BUNDLE)
@@ -81,14 +81,25 @@ endif()
 # Add port files to mbedtls targets
 target_sources(mbedtls PRIVATE ${mbedtls_target_sources})
 
+# Choose perihperal type
+if(CONFIG_IDF_TARGET_ESP32)
+    set(SHA_PERIPHERAL_TYPE "parallel_engine")
+else()
+    set(SHA_PERIPHERAL_TYPE "dma")
+endif()
+
 target_sources(mbedcrypto PRIVATE "${COMPONENT_DIR}/port/esp_hardware.c"
                                   "${COMPONENT_DIR}/port/esp_mem.c"
                                   "${COMPONENT_DIR}/port/esp_timing.c"
-                                  "${COMPONENT_DIR}/port/esp_sha.c"
+                                  "${COMPONENT_DIR}/port/sha/esp_sha.c"
                                   "${COMPONENT_DIR}/port/esp_aes_xts.c"
                                   "${COMPONENT_DIR}/port/${idf_target}/aes.c"
-                                  "${COMPONENT_DIR}/port/${idf_target}/sha.c"
+                                  "${COMPONENT_DIR}/port/sha/${SHA_PERIPHERAL_TYPE}/sha.c"
 )
+
+if(CONFIG_ESP_TLS_USE_DS_PERIPHERAL)
+    target_sources(mbedcrypto PRIVATE "${COMPONENT_DIR}/port/esp32s2/esp_rsa_sign_alt.c")
+endif()
 
 # Note: some mbedTLS hardware acceleration can be enabled/disabled by config.
 #
@@ -104,9 +115,9 @@ if(CONFIG_MBEDTLS_HARDWARE_MPI)
 endif()
 
 if(CONFIG_MBEDTLS_HARDWARE_SHA)
-    target_sources(mbedcrypto PRIVATE  "${COMPONENT_DIR}/port/${idf_target}/esp_sha1.c"
-                                       "${COMPONENT_DIR}/port/${idf_target}/esp_sha256.c"
-                                       "${COMPONENT_DIR}/port/${idf_target}/esp_sha512.c"
+    target_sources(mbedcrypto PRIVATE  "${COMPONENT_DIR}/port/sha/${SHA_PERIPHERAL_TYPE}/esp_sha1.c"
+                                       "${COMPONENT_DIR}/port/sha/${SHA_PERIPHERAL_TYPE}/esp_sha256.c"
+                                       "${COMPONENT_DIR}/port/sha/${SHA_PERIPHERAL_TYPE}/esp_sha512.c"
     )
 endif()
 
@@ -136,6 +147,11 @@ set_property(TARGET mbedcrypto APPEND PROPERTY LINK_INTERFACE_LIBRARIES mbedtls)
 
 # Link mbedtls libraries to component library
 target_link_libraries(${COMPONENT_LIB} PUBLIC ${mbedtls_targets})
+
+if(CONFIG_ESP_TLS_USE_DS_PERIPHERAL)
+    # Link target (esp32s2) library to component library
+    target_link_libraries(${COMPONENT_LIB} PUBLIC ${target})
+endif()
 
 # Link esp-cryptoauthlib to mbedtls
 if(CONFIG_ATCA_MBEDTLS_ECDSA)

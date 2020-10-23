@@ -2,6 +2,7 @@ add_library(soc_esp32 STATIC
     "adc_periph.c"
     "dac_periph.c"
     "gpio_periph.c"
+    "pcnt_periph.c"
     "rtc_io_periph.c"
     "rtc_periph.c"
     "sdio_slave_periph.c"
@@ -14,4 +15,4 @@ add_library(soc_esp32 STATIC
     "uart_periph.c"
     "touch_sensor_periph.c")
 
-target_include_directories(soc_esp32 PUBLIC . include ../include)
+target_include_directories(soc_esp32 PUBLIC include ../include private_include)

@@ -16,6 +16,8 @@
 #include "esp_rom_uart.h"
 #include "esp_rom_sys.h"
 
+#if !TEMPORARY_DISABLED_FOR_TARGETS(ESP32S3)
+
 #define WAKE_UP_IGNORE 1  // gpio_wakeup function development is not completed yet, set it deprecated.
 
 #if CONFIG_IDF_TARGET_ESP32
@@ -30,7 +32,7 @@
 // runner. Also avoid using GPIO18.
 #define TEST_GPIO_EXT_OUT_IO        17  // default output GPIO
 #define TEST_GPIO_EXT_IN_IO         21  // default input GPIO
-#define TEST_GPIO_OUTPUT_PIN        26
+#define TEST_GPIO_OUTPUT_PIN        12
 #define TEST_GPIO_INPUT_ONLY_PIN    46
 #define TEST_GPIO_OUTPUT_MAX        GPIO_NUM_46
 #endif
@@ -151,7 +153,7 @@ TEST_CASE("GPIO config parameters test", "[gpio]")
 {
     //error param test
     //ESP32 test 41 bit, ESP32-S2 test 48 bit
-    gpio_config_t io_config;
+    gpio_config_t io_config = { 0 };
     io_config.intr_type = GPIO_INTR_DISABLE;
     io_config.pin_bit_mask = ((uint64_t)1<<(GPIO_NUM_MAX+1));
     TEST_ASSERT(gpio_config(&io_config) == ESP_ERR_INVALID_ARG);
@@ -770,3 +772,5 @@ TEST_CASE("GPIO ISR service test", "[gpio][ignore]")
     gpio_uninstall_isr_service();
     TEST_ASSERT((io18_param.isr_cnt == 1) && (io19_param.isr_cnt == 1));
 }
+
+#endif

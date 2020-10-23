@@ -26,6 +26,7 @@
 #include "soc/soc_memory_layout.h"
 #include "driver/spi_common_internal.h"
 
+#if !TEMPORARY_DISABLED_FOR_TARGETS(ESP32S3)
 
 const static char TAG[] = "test_spi";
 
@@ -563,7 +564,7 @@ TEST_CASE("SPI Master DMA test, TX and RX in different regions", "[spi]")
     ESP_LOGI(TAG, "iram: %p, dram: %p", data_iram, data_dram);
     ESP_LOGI(TAG, "drom: %p, malloc: %p", data_drom, data_malloc);
     TEST_ASSERT(esp_ptr_in_dram(data_dram));
-    TEST_ASSERT(esp_ptr_in_iram(data_iram));
+    TEST_ASSERT(esp_ptr_executable(data_iram) || esp_ptr_in_iram(data_iram) || esp_ptr_in_diram_iram(data_iram));
     TEST_ASSERT(esp_ptr_in_drom(data_drom));
 
     srand(52);
@@ -1093,4 +1094,6 @@ TEST_CASE("spi_speed","[spi]")
     spi_device_release_bus(spi);
     master_free_device_bus(spi);
 }
+#endif
+
 #endif

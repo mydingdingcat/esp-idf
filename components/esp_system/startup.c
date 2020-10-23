@@ -59,11 +59,17 @@
 
 // [refactor-todo] make this file completely target-independent
 #if CONFIG_IDF_TARGET_ESP32
+#include "esp32/clk.h"
 #include "esp32/spiram.h"
 #include "esp32/brownout.h"
 #elif CONFIG_IDF_TARGET_ESP32S2
+#include "esp32s2/clk.h"
 #include "esp32s2/spiram.h"
 #include "esp32s2/brownout.h"
+#elif CONFIG_IDF_TARGET_ESP32S3
+#include "esp32s3/clk.h"
+#include "esp32s3/spiram.h"
+#include "esp32s3/brownout.h"
 #endif
 /***********************************************/
 
@@ -81,7 +87,7 @@
 uint64_t g_startup_time = 0;
 
 // App entry point for core 0
-extern void start_app(void);
+extern void esp_startup_start_app(void);
 
 // Entry point for core 0 from hardware init (port layer)
 void start_cpu0(void) __attribute__((weak, alias("start_cpu0_default"))) __attribute__((noreturn));
@@ -91,7 +97,7 @@ void start_cpu0(void) __attribute__((weak, alias("start_cpu0_default"))) __attri
 void start_cpu_other_cores(void) __attribute__((weak, alias("start_cpu_other_cores_default"))) __attribute__((noreturn));
 
 // App entry point for core [1..X]
-void start_app_other_cores(void) __attribute__((weak, alias("start_app_other_cores_default"))) __attribute__((noreturn));
+void esp_startup_start_app_other_cores(void) __attribute__((weak, alias("esp_startup_start_app_other_cores_default"))) __attribute__((noreturn));
 
 static volatile bool s_system_inited[SOC_CPU_CORES_NUM] = { false };
 
@@ -120,7 +126,7 @@ static IRAM_ATTR void _Unwind_SetNoFunctionContextInstall_Default(unsigned char 
 
 static const char* TAG = "cpu_start";
 
-static void IRAM_ATTR do_global_ctors(void)
+static void do_global_ctors(void)
 {
     extern void (*__init_array_start)(void);
     extern void (*__init_array_end)(void);
@@ -140,7 +146,7 @@ static void IRAM_ATTR do_global_ctors(void)
     }
 }
 
-static void IRAM_ATTR do_system_init_fn(void)
+static void do_system_init_fn(void)
 {
     extern esp_system_init_fn_t _esp_system_init_fn_array_start;
     extern esp_system_init_fn_t _esp_system_init_fn_array_end;
@@ -159,7 +165,7 @@ static void IRAM_ATTR do_system_init_fn(void)
 }
 
 #if !CONFIG_ESP_SYSTEM_SINGLE_CORE_MODE
-static void IRAM_ATTR start_app_other_cores_default(void)
+static void  esp_startup_start_app_other_cores_default(void)
 {
     while (1) {
         esp_rom_delay_us(UINT32_MAX);
@@ -174,11 +180,11 @@ static void IRAM_ATTR start_cpu_other_cores_default(void)
         esp_rom_delay_us(100);
     }
 
-    start_app_other_cores();
+    esp_startup_start_app_other_cores();
 }
 #endif
 
-static void IRAM_ATTR do_core_init(void)
+static void do_core_init(void)
 {
     /* Initialize heap allocator. WARNING: This *needs* to happen *after* the app cpu has booted.
        If the heap allocator is initialized first, it will put free memory linked list items into
@@ -277,7 +283,7 @@ static void IRAM_ATTR do_core_init(void)
     assert(flash_ret == ESP_OK);
 }
 
-static void IRAM_ATTR do_secondary_init(void)
+static void do_secondary_init(void)
 {
 #if !CONFIG_ESP_SYSTEM_SINGLE_CORE_MODE
     // The port layer transferred control to this function with other cores 'paused',
@@ -304,10 +310,12 @@ static void IRAM_ATTR do_secondary_init(void)
 #endif
 }
 
-void IRAM_ATTR start_cpu0_default(void)
+static void start_cpu0_default(void)
 {
 
     ESP_EARLY_LOGI(TAG, "Pro cpu start user code");
+    int cpu_freq = esp_clk_cpu_freq();
+    ESP_EARLY_LOGI(TAG, "cpu freq: %d", cpu_freq);
 
     // Display information about the current running image.
     if (LOG_LOCAL_LEVEL >= ESP_LOG_INFO) {
@@ -353,7 +361,7 @@ void IRAM_ATTR start_cpu0_default(void)
     s_system_full_inited = true;
 #endif
 
-    start_app();
+    esp_startup_start_app();
     while (1);
 }
 
@@ -361,41 +369,17 @@ IRAM_ATTR ESP_SYSTEM_INIT_FN(init_components0, BIT(0))
 {
     esp_timer_init();
 
-#if defined(CONFIG_PM_ENABLE) && defined(CONFIG_ESP_CONSOLE_UART)
-    /* When DFS is enabled, use REFTICK as UART clock source */
-    uart_ll_set_baudrate(UART_LL_GET_HW(CONFIG_ESP_CONSOLE_UART_NUM), UART_SCLK_REF_TICK, CONFIG_ESP_CONSOLE_UART_BAUDRATE);
-#endif // CONFIG_ESP_CONSOLE_UART_NONE
-
-#ifdef CONFIG_PM_ENABLE
+#if defined(CONFIG_PM_ENABLE) 
     esp_pm_impl_init();
-#ifdef CONFIG_PM_DFS_INIT_AUTO
-    int xtal_freq = (int) rtc_clk_xtal_freq_get();
-#ifdef CONFIG_IDF_TARGET_ESP32
-    esp_pm_config_esp32_t cfg = {
-        .max_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ,
-        .min_freq_mhz = xtal_freq,
-    };
-#else
-esp_pm_config_esp32s2_t cfg = {
-        .max_freq_mhz = CONFIG_ESP32S2_DEFAULT_CPU_FREQ_MHZ,
-        .min_freq_mhz = xtal_freq,
-    };
 #endif
-    esp_pm_configure(&cfg);
-#endif //CONFIG_PM_DFS_INIT_AUTO
-#endif //CONFIG_PM_ENABLE
 
-#if CONFIG_IDF_TARGET_ESP32
-#if CONFIG_ESP32_ENABLE_COREDUMP
+#if CONFIG_ESP_COREDUMP_ENABLE
     esp_core_dump_init();
 #endif
-#endif
 
-#if CONFIG_IDF_TARGET_ESP32
-#if CONFIG_ESP32_WIFI_SW_COEXIST_ENABLE
+#if CONFIG_SW_COEXIST_ENABLE
     esp_coex_adapter_register(&g_coex_adapter_funcs);
     coex_pre_init();
-#endif
 #endif
 
 #ifdef CONFIG_BOOTLOADER_EFUSE_SECURE_VERSION_EMULATE

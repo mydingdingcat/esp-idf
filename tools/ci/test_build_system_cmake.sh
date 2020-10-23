@@ -455,35 +455,36 @@ function run_tests()
 
     print_status "Building a project with CMake library imported and PSRAM workaround, all files compile with workaround"
     # Test for libraries compiled within ESP-IDF
-    rm -rf build
+    rm -r build sdkconfig
     echo "CONFIG_ESP32_SPIRAM_SUPPORT=y" >> sdkconfig.defaults
     echo "CONFIG_SPIRAM_CACHE_WORKAROUND=y" >> sdkconfig.defaults
     # note: we do 'reconfigure' here, as we just need to run cmake
     idf.py -C $IDF_PATH/examples/build_system/cmake/import_lib -B `pwd`/build -D SDKCONFIG_DEFAULTS="`pwd`/sdkconfig.defaults" reconfigure
     grep -q '"command"' build/compile_commands.json || failure "compile_commands.json missing or has no no 'commands' in it"
     (grep '"command"' build/compile_commands.json | grep -v mfix-esp32-psram-cache-issue) && failure "All commands in compile_commands.json should use PSRAM cache workaround"
-    rm -r sdkconfig.defaults build
-    # Test for external libraries in custom CMake projects with ESP-IDF components linked
-    mkdir build && touch build/sdkconfig
-    echo "CONFIG_ESP32_SPIRAM_SUPPORT=y" >> build/sdkconfig
-    echo "CONFIG_SPIRAM_CACHE_WORKAROUND=y" >> build/sdkconfig
+    rm -r build sdkconfig sdkconfig.defaults
+
+    print_status "Test for external libraries in custom CMake projects with ESP-IDF components linked"
+    mkdir build
+    IDF_AS_LIB=$IDF_PATH/examples/build_system/cmake/idf_as_lib
+    echo "CONFIG_ESP32_SPIRAM_SUPPORT=y" > $IDF_AS_LIB/sdkconfig
+    echo "CONFIG_SPIRAM_CACHE_WORKAROUND=y" >> $IDF_AS_LIB/sdkconfig
     # note: we just need to run cmake
-    (cd build && cmake $IDF_PATH/examples/build_system/cmake/idf_as_lib -DCMAKE_TOOLCHAIN_FILE=$IDF_PATH/tools/cmake/toolchain-esp32.cmake -DTARGET=esp32)
+    (cd build && cmake $IDF_AS_LIB -DCMAKE_TOOLCHAIN_FILE=$IDF_PATH/tools/cmake/toolchain-esp32.cmake -DTARGET=esp32)
     grep -q '"command"' build/compile_commands.json || failure "compile_commands.json missing or has no no 'commands' in it"
     (grep '"command"' build/compile_commands.json | grep -v mfix-esp32-psram-cache-issue) && failure "All commands in compile_commands.json should use PSRAM cache workaround"
-    rm -r build
-    #Test for various strategies
+
     for strat in MEMW NOPS DUPLDST; do
-        rm -r build sdkconfig.defaults sdkconfig sdkconfig.defaults.esp32
+        print_status "Test for external libraries in custom CMake projects with PSRAM strategy $strat"
+        rm -r build sdkconfig sdkconfig.defaults sdkconfig.defaults.esp32
         stratlc=`echo $strat | tr A-Z a-z`
-        mkdir build && touch build/sdkconfig
         echo "CONFIG_ESP32_SPIRAM_SUPPORT=y" > sdkconfig.defaults
         echo "CONFIG_SPIRAM_CACHE_WORKAROUND_STRATEGY_$strat=y"  >> sdkconfig.defaults
         echo "CONFIG_SPIRAM_CACHE_WORKAROUND=y" >> sdkconfig.defaults
         # note: we do 'reconfigure' here, as we just need to run cmake
         idf.py reconfigure
         grep -q '"command"' build/compile_commands.json || failure "compile_commands.json missing or has no no 'commands' in it"
-        (grep '"command"' build/compile_commands.json | grep -v mfix-esp32-psram-cache-strategy=$stratlc) && failure "All commands in compile_commands.json should use PSRAM cache workaround strategy $strat when selected"
+        (grep '"command"' build/compile_commands.json | grep -v mfix-esp32-psram-cache-strategy=$stratlc) && failure "All commands in compile_commands.json should use PSRAM cache workaround strategy"
         echo ${PWD}
         rm -r sdkconfig.defaults build
     done
@@ -758,7 +759,7 @@ endmenu\n" >> ${IDF_PATH}/Kconfig
     clean_build_dir
     mkdir -p components/esp32
     echo "idf_component_get_property(overriden_dir \${COMPONENT_NAME} COMPONENT_OVERRIDEN_DIR)" >> components/esp32/CMakeLists.txt
-    echo "message(STATUS overriden_dir:\${overriden_dir})" >> components/esp32/CMakeLists.txt 
+    echo "message(STATUS overriden_dir:\${overriden_dir})" >> components/esp32/CMakeLists.txt
     (idf.py reconfigure | grep "overriden_dir:$IDF_PATH/components/esp32") || failure  "Failed to get overriden dir" # no registration, overrides registration as well
     print_status "Overriding Kconfig"
     echo "idf_component_register(KCONFIG \${overriden_dir}/Kconfig)" >> components/esp32/CMakeLists.txt
@@ -766,6 +767,44 @@ endmenu\n" >> ${IDF_PATH}/Kconfig
     echo "message(STATUS kconfig:\${overriden_dir}/Kconfig)" >> components/esp32/CMakeLists.txt
     (idf.py reconfigure | grep "kconfig:$IDF_PATH/components/esp32/Kconfig") || failure  "Failed to verify original `main` directory"
     rm -rf components
+
+    print_status "Create project using idf.py and build it"
+    echo "Trying to create project."
+    (idf.py -C projects create-project temp_test_project) || failure "Failed to create the project."
+    cd "$IDF_PATH/projects/temp_test_project"
+    echo "Building the project temp_test_project . . ."
+    idf.py build || failure "Failed to build the project."
+    cd "$IDF_PATH"
+    rm -rf "$IDF_PATH/projects/temp_test_project"
+
+    print_status "Create component using idf.py, create project using idf.py."
+    print_status "Add the component to the created project and build the project."
+    echo "Trying to create project . . ."
+    (idf.py -C projects create-project temp_test_project) || failure "Failed to create the project."
+    echo "Trying to create component . . ."
+    (idf.py -C components create-component temp_test_component) || failure "Failed to create the component."
+    ${SED} -i '5i\\tfunc();' "$IDF_PATH/projects/temp_test_project/main/temp_test_project.c"
+    ${SED} -i '5i#include "temp_test_component.h"' "$IDF_PATH/projects/temp_test_project/main/temp_test_project.c"
+    cd "$IDF_PATH/projects/temp_test_project"
+    idf.py build || failure "Failed to build the project."
+    cd "$IDF_PATH"
+    rm -rf "$IDF_PATH/projects/temp_test_project"
+    rm -rf "$IDF_PATH/components/temp_test_component"
+
+    print_status "Check that command for creating new project will fail if the target folder is not empty."
+    mkdir "$IDF_PATH/example_proj/"
+    touch "$IDF_PATH/example_proj/tmp_130698"
+    EXPECTED_EXIT_VALUE=3
+    expected_failure $EXPECTED_EXIT_VALUE idf.py create-project --path "$IDF_PATH/example_proj/" temp_test_project  || failure "Command exit value is wrong."
+    rm -rf "$IDF_PATH/example_proj/"
+
+    print_status "Check that command for creating new project will fail if the target path is file."
+    touch "$IDF_PATH/example_proj"
+    EXPECTED_EXIT_VALUE=4
+    expected_failure $EXPECTED_EXIT_VALUE idf.py create-project --path "$IDF_PATH/example_proj" temp_test_project || failure "Command exit value is wrong."
+    rm -rf "$IDF_PATH/example_proj"
+
+
 
     print_status "All tests completed"
     if [ -n "${FAILURES}" ]; then
@@ -789,6 +828,15 @@ function failure()
     echo "FAILURE: $1"
     echo "!!!!!!!!!!!!!!!!!!!"
     FAILURES="${FAILURES}${STATUS} :: $1\n"
+}
+
+function expected_failure() {
+    "${@:2}"
+    EXIT_VALUE=$?
+    if [ $EXIT_VALUE != "$1" ]; then
+        echo "[ERROR] Exit value of executed command is $EXIT_VALUE (expected $1)"; return 1
+    else return 0
+    fi
 }
 
 TESTDIR=${PWD}/build_system_tests_$$

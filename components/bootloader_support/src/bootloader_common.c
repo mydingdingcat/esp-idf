@@ -21,12 +21,14 @@
 #include "esp32/rom/spi_flash.h"
 #elif CONFIG_IDF_TARGET_ESP32S2
 #include "esp32s2/rom/spi_flash.h"
+#elif CONFIG_IDF_TARGET_ESP32S3
+#include "esp32s3/rom/spi_flash.h"
 #endif
 #include "esp_rom_crc.h"
 #include "esp_rom_gpio.h"
 #include "esp_rom_sys.h"
 #include "esp_flash_partitions.h"
-#include "bootloader_flash.h"
+#include "bootloader_flash_priv.h"
 #include "bootloader_common.h"
 #include "bootloader_utility.h"
 #include "soc/gpio_periph.h"
@@ -173,28 +175,6 @@ esp_err_t bootloader_common_get_sha256_of_partition (uint32_t address, uint32_t 
     }
     // If image is type by data then hash is calculated for entire image.
     return bootloader_sha256_flash_contents(address, size, out_sha_256);
-}
-
-esp_err_t bootloader_common_get_partition_description(const esp_partition_pos_t *partition, esp_app_desc_t *app_desc)
-{
-    if (partition == NULL || app_desc == NULL || partition->offset == 0) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    const uint8_t *image = bootloader_mmap(partition->offset, partition->size);
-    if (image == NULL) {
-        ESP_LOGE(TAG, "bootloader_mmap(0x%x, 0x%x) failed", partition->offset, partition->size);
-        return ESP_FAIL;
-    }
-
-    memcpy(app_desc, image + sizeof(esp_image_header_t) + sizeof(esp_image_segment_header_t), sizeof(esp_app_desc_t));
-    bootloader_munmap(image);
-
-    if (app_desc->magic_word != ESP_APP_DESC_MAGIC_WORD) {
-        return ESP_ERR_NOT_FOUND;
-    }
-
-    return ESP_OK;
 }
 
 void bootloader_common_vddsdio_configure(void)

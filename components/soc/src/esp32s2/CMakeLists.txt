@@ -1,6 +1,6 @@
 set(srcs
-        "dac_hal.c"
         "rtc_clk.c"
+        "regi2c_ctrl.c"
         "rtc_clk_init.c"
         "rtc_init.c"
         "rtc_pm.c"
