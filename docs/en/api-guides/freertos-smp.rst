@@ -327,7 +327,7 @@ The ESP-IDF FreeRTOS critical section functions have been modified as follows…
    section functions (``port*_CRITICAL`` in Non-ISR and ``port*_CRITICAL_ISR`` in ISR)
    in order to be in compliance with Vanilla FreeRTOS.
 
-For more details see :component_file:`soc/include/soc/spinlock.h`
+For more details see :component_file:`esp_hw_support/include/soc/spinlock.h`
 and :component_file:`freertos/tasks.c`
 
 It should be noted that when modifying vanilla FreeRTOS code to be ESP-IDF
@@ -437,9 +437,6 @@ ESP-IDF FreeRTOS configurations, see :doc:`FreeRTOS <../api-reference/kconfig>`
     equivalent to running vanilla FreeRTOS**. Behaviors of multiple components in ESP-IDF
     will be modified. For more details regarding the effects of running ESP-IDF FreeRTOS
     on a single core, search for occurences of ``CONFIG_FREERTOS_UNICORE`` in the ESP-IDF components.
-
-:ref:`CONFIG_FREERTOS_SUPPORT_STATIC_ALLOCATION` will enable the 
-functionality of :cpp:func:`xTaskCreateStaticPinnedToCore` in ESP-IDF FreeRTOS
 
 :ref:`CONFIG_FREERTOS_ASSERT_ON_UNTESTED_FUNCTION` will trigger a halt in
 particular functions in ESP-IDF FreeRTOS which have not been fully tested

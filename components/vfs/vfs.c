@@ -18,6 +18,7 @@
 #include <sys/errno.h>
 #include <sys/fcntl.h>
 #include <sys/ioctl.h>
+#include <sys/reent.h>
 #include <sys/unistd.h>
 #include <sys/lock.h>
 #include <sys/param.h>
@@ -949,7 +950,7 @@ int esp_vfs_select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *errorfds
         return -1;
     }
 
-    for (int i = 0; i < vfs_count; ++i) {
+    for (size_t i = 0; i < vfs_count; ++i) {
         const vfs_entry_t *vfs = get_vfs_for_index(i);
         fds_triple_t *item = &vfs_fds_triple[i];
 

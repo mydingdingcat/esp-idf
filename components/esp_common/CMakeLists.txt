@@ -14,7 +14,6 @@ else()
     # Regular app build
     list(APPEND srcs "src/brownout.c"
              "src/esp_err.c"
-             "src/dbg_stubs.c"
              "src/esp_err_to_name.c"
              "src/freertos_hooks.c"
              "src/mac_addr.c"
@@ -22,10 +21,14 @@ else()
              "src/task_wdt.c"
              "src/int_wdt.c")
 
+    if(NOT CONFIG_IDF_TARGET_ESP32C3)
+        list(APPEND srcs "src/dbg_stubs.c")
+    endif()
+
     # Note: esp_ipc, esp_pm added as a public requirement to keep compatibility as to be located here.
     idf_component_register(SRCS "${srcs}"
                            INCLUDE_DIRS include
-                           REQUIRES ${target} espcoredump esp_timer esp_ipc esp_pm
+                           REQUIRES ${target} espcoredump esp_timer esp_ipc esp_pm esp_hw_support
                            PRIV_REQUIRES soc
                            LDFRAGMENTS "linker.lf")
 

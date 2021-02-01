@@ -30,7 +30,6 @@
 #include "hal/spi_slave_hal.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
-#include "freertos/xtensa_api.h"
 #include "freertos/task.h"
 #include "sdkconfig.h"
 
@@ -82,8 +81,8 @@ static inline bool is_valid_host(spi_host_device_t host)
 {
 #if CONFIG_IDF_TARGET_ESP32
     return host >= SPI1_HOST && host <= SPI3_HOST;
-#elif CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
-// SPI_HOST (SPI1_HOST) is not supported by the SPI Slave driver on ESP32-S2
+#else
+// SPI_HOST (SPI1_HOST) is not supported by the SPI Slave driver on ESP32-S2 & later
     return host >= SPI2_HOST && host <= SPI3_HOST;
 #endif
 }
@@ -125,6 +124,7 @@ esp_err_t spi_slave_initialize(spi_host_device_t host, const spi_bus_config_t *b
 #ifndef CONFIG_SPI_SLAVE_ISR_IN_IRAM
     SPI_CHECK((bus_config->intr_flags & ESP_INTR_FLAG_IRAM)==0, "ESP_INTR_FLAG_IRAM should be disabled when CONFIG_SPI_SLAVE_ISR_IN_IRAM is not set.", ESP_ERR_INVALID_ARG);
 #endif
+    SPI_CHECK(slave_config->spics_io_num < 0 || GPIO_IS_VALID_GPIO(slave_config->spics_io_num), "spics pin invalid", ESP_ERR_INVALID_ARG);
 
     spi_chan_claimed=spicommon_periph_claim(host, "spi slave");
     SPI_CHECK(spi_chan_claimed, "host already in use", ESP_ERR_INVALID_STATE);
@@ -136,6 +136,8 @@ esp_err_t spi_slave_initialize(spi_host_device_t host, const spi_bus_config_t *b
             spicommon_periph_free( host );
             SPI_CHECK(dma_chan_claimed, "dma channel already in use", ESP_ERR_INVALID_STATE);
         }
+
+        spicommon_connect_spi_and_dma(host, dma_chan);
     }
 
     spihost[host] = malloc(sizeof(spi_slave_t));
@@ -152,7 +154,10 @@ esp_err_t spi_slave_initialize(spi_host_device_t host, const spi_bus_config_t *b
         ret = err;
         goto cleanup;
     }
-    spicommon_cs_initialize(host, slave_config->spics_io_num, 0, !bus_is_iomux(spihost[host]));
+    if (slave_config->spics_io_num >= 0) {
+        spicommon_cs_initialize(host, slave_config->spics_io_num, 0, !bus_is_iomux(spihost[host]));
+    }
+
     // The slave DMA suffers from unexpected transactions. Forbid reading if DMA is enabled by disabling the CS line.
     if (use_dma) freeze_cs(spihost[host]);
 
@@ -308,30 +313,6 @@ esp_err_t SPI_SLAVE_ATTR spi_slave_transmit(spi_host_device_t host, spi_slave_tr
     return ESP_OK;
 }
 
-#ifdef DEBUG_SLAVE
-static void dumpregs(spi_dev_t *hw)
-{
-    esp_rom_printf("***REG DUMP ***\n");
-    esp_rom_printf("mosi_dlen         : %08X\n", hw->mosi_dlen.val);
-    esp_rom_printf("miso_dlen         : %08X\n", hw->miso_dlen.val);
-    esp_rom_printf("slv_wrbuf_dlen    : %08X\n", hw->slv_wrbuf_dlen.val);
-    esp_rom_printf("slv_rdbuf_dlen    : %08X\n", hw->slv_rdbuf_dlen.val);
-    esp_rom_printf("slave             : %08X\n", hw->slave.val);
-    esp_rom_printf("slv_rdata_bit     : %x\n", hw->slv_rd_bit.slv_rdata_bit);
-    esp_rom_printf("dma_rx_status     : %08X\n", hw->dma_rx_status);
-    esp_rom_printf("dma_tx_status     : %08X\n", hw->dma_tx_status);
-}
-
-
-static void dumpll(lldesc_t *ll)
-{
-    esp_rom_printf("****LL DUMP****\n");
-    esp_rom_printf("Size %d\n", ll->size);
-    esp_rom_printf("Len: %d\n", ll->length);
-    esp_rom_printf("Owner: %s\n", ll->owner ? "dma" : "cpu");
-}
-#endif
-
 static void SPI_SLAVE_ISR_ATTR spi_slave_restart_after_dmareset(void *arg)
 {
     spi_slave_t *host = (spi_slave_t *)arg;
@@ -348,11 +329,6 @@ static void SPI_SLAVE_ISR_ATTR spi_intr(void *arg)
     spi_slave_transaction_t *trans = NULL;
     spi_slave_t *host = (spi_slave_t *)arg;
     spi_slave_hal_context_t *hal = &host->hal;
-
-#ifdef DEBUG_SLAVE
-    dumpregs(host->hw);
-    if (host->dmadesc_rx) dumpll(&host->dmadesc_rx[0]);
-#endif
 
     assert(spi_slave_hal_usr_is_done(hal));
 
@@ -415,4 +391,3 @@ static void SPI_SLAVE_ISR_ATTR spi_intr(void *arg)
     }
     if (do_yield) portYIELD_FROM_ISR();
 }
-

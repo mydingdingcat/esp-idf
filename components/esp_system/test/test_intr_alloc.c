@@ -9,15 +9,16 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "freertos/queue.h"
-#include "freertos/xtensa_api.h"
 #include "unity.h"
 #include "soc/uart_periph.h"
-#include "soc/dport_reg.h"
 #include "soc/gpio_periph.h"
 #include "esp_intr_alloc.h"
 #include "driver/periph_ctrl.h"
 #include "driver/timer.h"
 #include "sdkconfig.h"
+
+#if !TEMPORARY_DISABLED_FOR_TARGETS(ESP32S3,ESP32C3)
+// TODO ESP32-C3 IDF-2585
 
 #define TIMER_DIVIDER   16               /*!< Hardware timer clock divider */
 #define TIMER_SCALE    (TIMER_BASE_CLK / TIMER_DIVIDER)  /*!< used to calculate counter value */
@@ -265,7 +266,7 @@ TEST_CASE("allocate 2 handlers for a same source and remove the later one","[int
 {
     intr_alloc_test_ctx_t ctx = {false, false, false, false };
     intr_handle_t handle1, handle2;
-    
+
     #ifdef CONFIG_IDF_TARGET_ESP32
     //enable HSPI(spi2)
     periph_module_enable(PERIPH_HSPI_MODULE);
@@ -304,7 +305,7 @@ TEST_CASE("allocate 2 handlers for a same source and remove the later one","[int
     r=esp_intr_free(handle2);
 
     printf("trigger second time.\n");
-    
+
     #ifdef CONFIG_IDF_TARGET_ESP32
     SPI2.slave.trans_done = 1;
     #else
@@ -354,3 +355,4 @@ TEST_CASE("alloc and free isr handle on different core", "[intr_alloc]")
 }
 
 #endif
+#endif // #if !TEMPORARY_DISABLED_FOR_TARGETS(ESP32S3, ESP32C3)

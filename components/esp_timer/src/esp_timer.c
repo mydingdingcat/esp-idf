@@ -23,7 +23,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
-#include "freertos/xtensa_api.h"
 #include "soc/spinlock.h"
 #include "esp_timer.h"
 #include "esp_timer_impl.h"
@@ -36,16 +35,13 @@
 #include "esp32/rtc.h"
 #elif CONFIG_IDF_TARGET_ESP32S2
 #include "esp32s2/rtc.h"
+#elif CONFIG_IDF_TARGET_ESP32S3
+#include "esp32s3/rtc.h"
+#elif CONFIG_IDF_TARGET_ESP32C3
+#include "esp32c3/rtc.h"
 #endif
 
 #include "sdkconfig.h"
-
-#if defined( CONFIG_ESP32_TIME_SYSCALL_USE_FRC1 ) || \
-    defined( CONFIG_ESP32_TIME_SYSCALL_USE_RTC_FRC1 ) || \
-    defined( CONFIG_ESP32S2_TIME_SYSCALL_USE_FRC1 ) || \
-    defined( CONFIG_ESP32S2_TIME_SYSCALL_USE_RTC_FRC1 )
-#define WITH_FRC 1
-#endif
 
 #ifdef CONFIG_ESP_TIMER_PROFILING
 #define WITH_PROFILING 1
@@ -59,11 +55,15 @@
 
 #define EVENT_ID_DELETE_TIMER   0xF0DE1E1E
 
-#define TIMER_EVENT_QUEUE_SIZE      16
+typedef enum {
+    FL_DISPATCH_METHOD       = (1 << 0),  //!< 0=Callback is called from timer task, 1=Callback is called from timer ISR
+    FL_SKIP_UNHANDLED_EVENTS = (1 << 1),  //!< 0=NOT skip unhandled events for periodic timers, 1=Skip unhandled events for periodic timers
+} flags_t;
 
 struct esp_timer {
     uint64_t alarm;
-    uint64_t period;
+    uint64_t period:56;
+    flags_t flags:8;
     union {
         esp_timer_cb_t callback;
         uint32_t event_id;
@@ -73,6 +73,7 @@ struct esp_timer {
     const char* name;
     size_t times_triggered;
     size_t times_armed;
+    size_t times_skipped;
     uint64_t total_callback_run_time;
 #endif // WITH_PROFILING
     LIST_ENTRY(esp_timer) list_entry;
@@ -90,7 +91,7 @@ static void timer_insert_inactive(esp_timer_handle_t timer);
 static void timer_remove_inactive(esp_timer_handle_t timer);
 #endif // WITH_PROFILING
 
-static const char* TAG = "esp_timer";
+__attribute__((unused)) static const char* TAG = "esp_timer";
 
 // list of currently armed timers
 static LIST_HEAD(esp_timer_list, esp_timer) s_timers =
@@ -103,13 +104,6 @@ static LIST_HEAD(esp_inactive_timer_list, esp_timer) s_inactive_timers =
 #endif
 // task used to dispatch timer callbacks
 static TaskHandle_t s_timer_task;
-// counting semaphore used to notify the timer task from ISR
-static SemaphoreHandle_t s_timer_semaphore;
-
-#if CONFIG_SPIRAM_USE_MALLOC
-// memory for s_timer_semaphore
-static StaticQueue_t s_timer_semaphore_memory;
-#endif
 
 // lock protecting s_timers, s_inactive_timers
 static portMUX_TYPE s_timer_lock = portMUX_INITIALIZER_UNLOCKED;
@@ -130,6 +124,8 @@ esp_err_t esp_timer_create(const esp_timer_create_args_t* args,
     }
     result->callback = args->callback;
     result->arg = args->arg;
+    result->flags = (args->dispatch_method ? FL_DISPATCH_METHOD : 0) |
+                    (args->skip_unhandled_events ? FL_SKIP_UNHANDLED_EVENTS : 0);
 #if WITH_PROFILING
     result->name = args->name;
     timer_insert_inactive(result);
@@ -171,6 +167,7 @@ esp_err_t IRAM_ATTR esp_timer_start_periodic(esp_timer_handle_t timer, uint64_t 
     timer->period = period_us;
 #if WITH_PROFILING
     timer->times_armed++;
+    timer->times_skipped = 0;
 #endif
     esp_err_t err = timer_insert(timer);
     timer_list_unlock();
@@ -295,47 +292,51 @@ static void timer_process_alarm(esp_timer_dispatch_t dispatch_method)
     (void) dispatch_method;
 
     timer_list_lock();
-    int64_t now = esp_timer_impl_get_time();
-    esp_timer_handle_t it = LIST_FIRST(&s_timers);
-    while (it != NULL &&
-            it->alarm < now) {  // NOLINT(clang-analyzer-unix.Malloc)
-            // Static analyser reports "Use of memory after it is freed" since the "it" variable
-            // is freed below (if EVENT_ID_DELETE_TIMER) and assigned to the (new) LIST_FIRST()
-            // so possibly (if the "it" hasn't been removed from the list) it might keep the same ptr.
-            // Ignoring this warning, as this couldn't happen if queue.h used to populate the list
+    esp_timer_handle_t it;
+    while (1) {
+        it = LIST_FIRST(&s_timers);
+        int64_t now = esp_timer_impl_get_time();
+        if (it == NULL || it->alarm > now) {
+            break;
+        }
         LIST_REMOVE(it, list_entry);
         if (it->event_id == EVENT_ID_DELETE_TIMER) {
             free(it);
-            it = LIST_FIRST(&s_timers);
-            continue;
-        }
-        if (it->period > 0) {
-            it->alarm += it->period;
-            timer_insert(it);
+            it = NULL;
         } else {
-            it->alarm = 0;
+            if (it->period > 0) {
+                int skipped = (now - it->alarm) / it->period;
+                if ((it->flags & FL_SKIP_UNHANDLED_EVENTS) && (skipped > 1)) {
+                    it->alarm = now + it->period;
 #if WITH_PROFILING
-            timer_insert_inactive(it);
+                    it->times_skipped += skipped;
+#endif
+                } else {
+                    it->alarm += it->period;
+                }
+                timer_insert(it);
+            } else {
+                it->alarm = 0;
+#if WITH_PROFILING
+                timer_insert_inactive(it);
+#endif
+            }
+#if WITH_PROFILING
+            uint64_t callback_start = now;
+#endif
+            esp_timer_cb_t callback = it->callback;
+            void* arg = it->arg;
+            timer_list_unlock();
+            (*callback)(arg);
+            timer_list_lock();
+#if WITH_PROFILING
+            it->times_triggered++;
+            it->total_callback_run_time += esp_timer_impl_get_time() - callback_start;
 #endif
         }
-#if WITH_PROFILING
-        uint64_t callback_start = now;
-#endif
-        esp_timer_cb_t callback = it->callback;
-        void* arg = it->arg;
-        timer_list_unlock();
-        (*callback)(arg);
-        timer_list_lock();
-        now = esp_timer_impl_get_time();
-#if WITH_PROFILING
-        it->times_triggered++;
-        it->total_callback_run_time += now - callback_start;
-#endif
-        it = LIST_FIRST(&s_timers);
     }
-    esp_timer_handle_t first = LIST_FIRST(&s_timers);
-    if (first) {
-        esp_timer_impl_set_alarm(first->alarm);
+    if (it) {
+        esp_timer_impl_set_alarm(it->alarm);
     }
     timer_list_unlock();
 }
@@ -343,20 +344,17 @@ static void timer_process_alarm(esp_timer_dispatch_t dispatch_method)
 static void timer_task(void* arg)
 {
     while (true){
-        int res = xSemaphoreTake(s_timer_semaphore, portMAX_DELAY);
-        assert(res == pdTRUE);
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        // all deferred events are processed at a time
         timer_process_alarm(ESP_TIMER_TASK);
     }
 }
 
 static void IRAM_ATTR timer_alarm_handler(void* arg)
 {
-    int need_yield;
-    if (xSemaphoreGiveFromISR(s_timer_semaphore, &need_yield) != pdPASS) {
-        ESP_EARLY_LOGD(TAG, "timer queue overflow");
-        return;
-    }
-    if (need_yield == pdTRUE) {
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    vTaskNotifyGiveFromISR(s_timer_task, &xHigherPriorityTaskWoken);
+    if (xHigherPriorityTaskWoken == pdTRUE) {
         portYIELD_FROM_ISR();
     }
 }
@@ -373,17 +371,6 @@ esp_err_t esp_timer_init(void)
         return ESP_ERR_INVALID_STATE;
     }
 
-#if CONFIG_SPIRAM_USE_MALLOC
-    memset(&s_timer_semaphore_memory, 0, sizeof(StaticQueue_t));
-    s_timer_semaphore = xSemaphoreCreateCountingStatic(TIMER_EVENT_QUEUE_SIZE, 0, &s_timer_semaphore_memory);
-#else
-    s_timer_semaphore = xSemaphoreCreateCounting(TIMER_EVENT_QUEUE_SIZE, 0);
-#endif
-    if (!s_timer_semaphore) {
-        err = ESP_ERR_NO_MEM;
-        goto out;
-    }
-
     int ret = xTaskCreatePinnedToCore(&timer_task, "esp_timer",
             ESP_TASK_TIMER_STACK, NULL, ESP_TASK_TIMER_PRIO, &s_timer_task, PRO_CPU_NUM);
     if (ret != pdPASS) {
@@ -396,7 +383,7 @@ esp_err_t esp_timer_init(void)
         goto out;
     }
 
-#if WITH_FRC
+#if CONFIG_ESP_TIME_FUNCS_USE_ESP_TIMER
     // [refactor-todo] this logic, "esp_rtc_get_time_us() - g_startup_time", is also
     // the weak definition of esp_system_get_time; find a way to remove this duplication.
     esp_timer_private_advance(esp_rtc_get_time_us() - g_startup_time);
@@ -409,10 +396,7 @@ out:
         vTaskDelete(s_timer_task);
         s_timer_task = NULL;
     }
-    if (s_timer_semaphore) {
-        vSemaphoreDelete(s_timer_semaphore);
-        s_timer_semaphore = NULL;
-    }
+
     return ESP_ERR_NO_MEM;
 }
 
@@ -440,22 +424,26 @@ esp_err_t esp_timer_deinit(void)
 
     vTaskDelete(s_timer_task);
     s_timer_task = NULL;
-    vSemaphoreDelete(s_timer_semaphore);
-    s_timer_semaphore = NULL;
     return ESP_OK;
 }
 
 static void print_timer_info(esp_timer_handle_t t, char** dst, size_t* dst_size)
 {
-    size_t cb = snprintf(*dst, *dst_size,
 #if WITH_PROFILING
-            "%-12s  %12lld  %12lld  %9d  %9d  %12lld\n",
-            t->name, t->period, t->alarm,
-            t->times_armed, t->times_triggered, t->total_callback_run_time);
+    size_t cb;
+    // name is optional, might be missed.
+    if (t->name) {
+        cb = snprintf(*dst, *dst_size, "%-12s  ", t->name);
+    } else {
+        cb = snprintf(*dst, *dst_size, "timer@%p  ", t);
+    }
+    cb += snprintf(*dst + cb, *dst_size + cb, "%12lld  %12lld  %9d  %9d  %6d  %12lld\n",
+                    (uint64_t)t->period, t->alarm, t->times_armed,
+                    t->times_triggered, t->times_skipped, t->total_callback_run_time);
     /* keep this in sync with the format string, used in esp_timer_dump */
-#define TIMER_INFO_LINE_LEN 78
+#define TIMER_INFO_LINE_LEN 90
 #else
-            "timer@%p  %12lld  %12lld\n", t, t->period, t->alarm);
+    size_t cb = snprintf(*dst, *dst_size, "timer@%p  %12lld  %12lld\n", t, (uint64_t)t->period, t->alarm);
 #define TIMER_INFO_LINE_LEN 46
 #endif
     *dst += cb;
@@ -531,7 +519,7 @@ int64_t IRAM_ATTR esp_timer_get_next_alarm(void)
 
 // Provides strong definition for system time functions relied upon
 // by core components.
-#if WITH_FRC
+#if CONFIG_ESP_TIME_FUNCS_USE_ESP_TIMER
 int64_t IRAM_ATTR esp_system_get_time(void)
 {
     return esp_timer_get_time();
@@ -539,6 +527,6 @@ int64_t IRAM_ATTR esp_system_get_time(void)
 
 uint32_t IRAM_ATTR esp_system_get_time_resolution(void)
 {
-    return 1;
+    return 1000;
 }
 #endif

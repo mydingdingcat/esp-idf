@@ -21,7 +21,7 @@ import fnmatch
 
 from fragments import Sections, Scheme, Mapping, Fragment
 from pyparsing import Suppress, White, ParseException, Literal, Group, ZeroOrMore
-from pyparsing import Word, OneOrMore, nums, alphanums, alphas, Optional, LineEnd, printables
+from pyparsing import Word, OneOrMore, nums, alphanums, alphas, Optional, restOfLine
 from ldgen_common import LdGenFailure
 
 
@@ -580,9 +580,9 @@ class SectionsInfo(dict):
         first_line = sections_info_dump.readline()
 
         archive_path = (Literal("In archive").suppress() +
-                        # trim the last character from archive_path, :
-                        Word(printables + " ").setResultsName("archive_path").setParseAction(lambda t: t[0][:-1]) +
-                        LineEnd())
+                        White().suppress() +
+                        # trim the colon and line ending characters from archive_path
+                        restOfLine.setResultsName("archive_path").setParseAction(lambda s, loc, toks: s.rstrip(":\n\r ")))
         parser = archive_path
 
         results = None
@@ -597,7 +597,8 @@ class SectionsInfo(dict):
 
     def _get_infos_from_file(self, info):
         # Object file line: '{object}:  file format elf32-xtensa-le'
-        object = Fragment.ENTITY.setResultsName("object") + Literal(":").suppress() + Literal("file format elf32-xtensa-le").suppress()
+        obj = Fragment.ENTITY.setResultsName("object") + Literal(":").suppress() + \
+            (Literal("file format elf32-") + (Literal("xtensa-le") | Literal("littleriscv"))).suppress()
 
         # Sections table
         header = Suppress(Literal("Sections:") + Literal("Idx") + Literal("Name") + Literal("Size") + Literal("VMA") +
@@ -607,7 +608,7 @@ class SectionsInfo(dict):
                                                                    Optional(Literal(","))))
 
         # Content is object file line + sections table
-        content = Group(object + header + Group(ZeroOrMore(entry)).setResultsName("sections"))
+        content = Group(obj + header + Group(ZeroOrMore(entry)).setResultsName("sections"))
 
         parser = Group(ZeroOrMore(content)).setResultsName("contents")
 

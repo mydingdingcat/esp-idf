@@ -263,7 +263,7 @@ Queue_t * const pxQueue = xQueue;
 
 	configASSERT( pxQueue );
 
-	if( xNewQueue == pdTRUE ) 
+	if( xNewQueue == pdTRUE )
 	{
 		vPortCPUInitializeMutex(&pxQueue->mux);
 	}
@@ -494,7 +494,7 @@ static void prvInitialiseNewQueue( const UBaseType_t uxQueueLength, const UBaseT
 			/* In case this is a recursive mutex. */
 			pxNewQueue->u.xSemaphore.uxRecursiveCallCount = 0;
 			vPortCPUInitializeMutex(&pxNewQueue->mux);
-			
+
 			traceCREATE_MUTEX( pxNewQueue );
 
 			/* Start with the semaphore in the expected state. */
@@ -770,6 +770,11 @@ Queue_t * const pxQueue = xQueue;
 	}
 	#endif
 
+#if ( configUSE_MUTEXES == 1 && configCHECK_MUTEX_GIVEN_BY_OWNER == 1)
+	configASSERT(pxQueue->uxQueueType != queueQUEUE_IS_MUTEX
+				 || pxQueue->u.xSemaphore.xMutexHolder == NULL
+				 || pxQueue->u.xSemaphore.xMutexHolder == xTaskGetCurrentTaskHandle());
+#endif
 
 	/*lint -save -e904 This function relaxes the coding standard somewhat to
 	allow return statements within the function itself.  This is done in the
@@ -940,9 +945,9 @@ Queue_t * const pxQueue = xQueue;
 				task is already in a ready list before it yields - in which
 				case the yield will not cause a context switch unless there
 				is also a higher priority task in the pending ready list. */
-				taskEXIT_CRITICAL( &pxQueue->mux);				
+				taskEXIT_CRITICAL( &pxQueue->mux);
 				portYIELD_WITHIN_API();
-				
+
 			}
 			else
 			{
@@ -1576,7 +1581,7 @@ Queue_t * const pxQueue = xQueue;
 				vTaskPlaceOnEventList( &( pxQueue->xTasksWaitingToReceive ), xTicksToWait );
 				prvUnlockQueue( pxQueue );
 				taskEXIT_CRITICAL( &pxQueue->mux);
-				portYIELD_WITHIN_API();				
+				portYIELD_WITHIN_API();
 			}
 			else
 			{
@@ -2667,7 +2672,7 @@ Queue_t * const pxQueue = xQueue;
 				mtCOVERAGE_TEST_MARKER();
 			}
 		}
-		portEXIT_CRITICAL(&queue_registry_spinlock);		
+		portEXIT_CRITICAL(&queue_registry_spinlock);
 	}
 
 #endif /* configQUEUE_REGISTRY_SIZE */
@@ -2943,15 +2948,3 @@ Queue_t * const pxQueue = xQueue;
 	}
 
 #endif /* configUSE_QUEUE_SETS */
-
-
-
-
-
-
-
-
-
-
-
-

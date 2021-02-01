@@ -298,7 +298,7 @@ void BTA_GATTC_ServiceSearchRequest (UINT16 conn_id, tBT_UUID *p_srvc_uuid)
 ** Returns          returns list_t of tBTA_GATTC_SERVICE or NULL.
 **
 *******************************************************************************/
-const list_t* BTA_GATTC_GetServices(UINT16 conn_id) 
+const list_t* BTA_GATTC_GetServices(UINT16 conn_id)
 {
     return bta_gattc_get_services(conn_id);
 }
@@ -315,7 +315,7 @@ const list_t* BTA_GATTC_GetServices(UINT16 conn_id)
 ** Returns          returns pointer to tBTA_GATTC_CHARACTERISTIC or NULL.
 **
 *******************************************************************************/
-const tBTA_GATTC_CHARACTERISTIC* BTA_GATTC_GetCharacteristic(UINT16 conn_id, UINT16 handle) 
+const tBTA_GATTC_CHARACTERISTIC* BTA_GATTC_GetCharacteristic(UINT16 conn_id, UINT16 handle)
 {
     return bta_gattc_get_characteristic(conn_id, handle);
 }
@@ -562,6 +562,39 @@ void BTA_GATTC_ReadMultiple(UINT16 conn_id, tBTA_GATTC_MULTI *p_read_multi,
     return;
 }
 
+/*******************************************************************************
+**
+** Function         BTA_GATTC_Read_by_type
+**
+** Description      This function is called to read a attribute value by uuid
+**
+** Parameters       conn_id - connection ID.
+**                  s_handle - start handle.
+**                  e_handle - end hanle
+**                  uuid - The attribute UUID.
+**
+** Returns          None
+**
+*******************************************************************************/
+void BTA_GATTC_Read_by_type(UINT16 conn_id, UINT16 s_handle,UINT16 e_handle, tBT_UUID *uuid, tBTA_GATT_AUTH_REQ auth_req)
+{
+    tBTA_GATTC_API_READ  *p_buf;
+
+    if ((p_buf = (tBTA_GATTC_API_READ *) osi_malloc(sizeof(tBTA_GATTC_API_READ))) != NULL) {
+        memset(p_buf, 0, sizeof(tBTA_GATTC_API_READ));
+
+        p_buf->hdr.event = BTA_GATTC_API_READ_BY_TYPE_EVT;
+        p_buf->hdr.layer_specific = conn_id;
+        p_buf->auth_req = auth_req;
+        p_buf->s_handle = s_handle;
+        p_buf->e_handle = e_handle;
+        memcpy(&(p_buf->uuid), uuid, sizeof(tBT_UUID));
+        p_buf->cmpl_evt = BTA_GATTC_READ_CHAR_EVT;
+
+        bta_sys_sendmsg(p_buf);
+    }
+    return;
+}
 
 /*******************************************************************************
 **
@@ -963,7 +996,7 @@ void BTA_GATTC_CacheAssoc(tBTA_GATTC_IF client_if, BD_ADDR src_addr, BD_ADDR ass
         memcpy(p_buf->assoc_addr, assoc_addr, sizeof(BD_ADDR));
 
         bta_sys_sendmsg(p_buf);
-        
+
     }
     return;
 }
@@ -1070,4 +1103,3 @@ void BTA_GATTC_Broadcast(tBTA_GATTC_IF client_if, BOOLEAN start)
 }
 
 #endif /* defined(GATTC_INCLUDED) && (GATTC_INCLUDED == TRUE) */
-

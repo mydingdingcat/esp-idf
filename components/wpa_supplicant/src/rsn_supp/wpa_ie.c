@@ -131,9 +131,9 @@ static int  wpa_gen_wpa_ie_rsn(u8 *rsn_ie, size_t rsn_ie_len,
         return -1;
     }
 
-    /* For WPA2-PSK, if the RSNE in AP beacon/probe response doesn't specify the 
+    /* For WPA2-PSK, if the RSNE in AP beacon/probe response doesn't specify the
      * pairwise cipher or AKM suite, the RSNE IE in association request
-     * should only contain group cihpher suite, otherwise the WPA2 improvements 
+     * should only contain group cihpher suite, otherwise the WPA2 improvements
      * certification will fail.
      */
     if ( (sm->ap_notify_completed_rsne == true) || (key_mgmt == WPA_KEY_MGMT_IEEE8021X) ) {
@@ -203,11 +203,11 @@ static int  wpa_gen_wpa_ie_rsn(u8 *rsn_ie, size_t rsn_ie_len,
         RSN_SELECTOR_PUT(pos, RSN_AUTH_KEY_MGMT_802_1X_SHA256);
     } else if (key_mgmt == WPA_KEY_MGMT_PSK_SHA256) {
         RSN_SELECTOR_PUT(pos, RSN_AUTH_KEY_MGMT_PSK_SHA256);
-#endif /* CONFIG_IEEE80211W */
 #ifdef CONFIG_WPA3_SAE
     } else if (key_mgmt == WPA_KEY_MGMT_SAE) {
         RSN_SELECTOR_PUT(pos, RSN_AUTH_KEY_MGMT_SAE);
 #endif /* CONFIG_WPA3_SAE */
+#endif /* CONFIG_IEEE80211W */
     } else {
         wpa_printf(MSG_DEBUG, "Invalid key management type (%d).",
                key_mgmt);
@@ -370,11 +370,11 @@ int  wpa_supplicant_parse_ies(const u8 *buf, size_t len,
 			break;
 		}
 		if (pos + 2 + pos[1] > end) {
-		    #ifdef DEBUG_PRINT	
+		    #ifdef DEBUG_PRINT
 			wpa_printf(MSG_DEBUG, "WPA: EAPOL-Key Key Data "
 				   "underflow (ie=%d len=%d pos=%d)",
 				   pos[0], pos[1], (int) (pos - buf));
-		    #endif	
+		    #endif
 			wpa_hexdump(MSG_DEBUG, "WPA: Key Data",
 					buf, len);
 			ret = -1;
@@ -404,4 +404,3 @@ int  wpa_supplicant_parse_ies(const u8 *buf, size_t len,
 
 
 #endif // ESP_SUPPLICANT
-

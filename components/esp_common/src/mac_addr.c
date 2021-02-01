@@ -57,7 +57,7 @@ esp_err_t esp_base_mac_addr_get(uint8_t *mac)
 esp_err_t esp_efuse_mac_get_custom(uint8_t *mac)
 {
 #if !CONFIG_IDF_TARGET_ESP32
-    return ESP_ERR_NOT_SUPPORTED;
+    return ESP_ERR_NOT_SUPPORTED; // TODO IDF-1326
 #else
     uint8_t version;
     esp_efuse_read_field_blob(ESP_EFUSE_MAC_CUSTOM_VER, &version, 8);
@@ -95,11 +95,9 @@ esp_err_t esp_efuse_mac_get_default(uint8_t* mac)
          // Small range of MAC addresses are accepted even if CRC is invalid.
          // These addresses are reserved for Espressif internal use.
         uint32_t mac_high = ((uint32_t)mac[0] << 8) | mac[1];
-        if ((mac_high & 0xFFFF) == 0x18fe) {
-            uint32_t mac_low = ((uint32_t)mac[2] << 24) | ((uint32_t)mac[3] << 16) | ((uint32_t)mac[4] << 8) | mac[5];
-            if ((mac_low >= 0x346a85c7) && (mac_low <= 0x346a85f8)) {
-                return ESP_OK;
-            }
+        uint32_t mac_low = ((uint32_t)mac[2] << 24) | ((uint32_t)mac[3] << 16) | ((uint32_t)mac[4] << 8) | mac[5];
+        if (((mac_high & 0xFFFF) == 0x18fe) && (mac_low >= 0x346a85c7) && (mac_low <= 0x346a85f8)) {
+            return ESP_OK;
         } else {
             ESP_LOGE(TAG, "Base MAC address from BLK0 of EFUSE CRC error, efuse_crc = 0x%02x; calc_crc = 0x%02x", efuse_crc, calc_crc);
             abort();
@@ -167,7 +165,7 @@ esp_err_t esp_read_mac(uint8_t* mac, esp_mac_type_t type)
         uint8_t mac_begin[6] = { 0x7c, 0xdf, 0xa1, 0x00, 0x30, 0x00 };
         uint8_t mac_end[6]   = { 0x7c, 0xdf, 0xa1, 0x00, 0x5f, 0xff };
         if(memcmp(mac,mac_begin,6) >= 0 && memcmp(mac_end,mac,6) >=0 ){
-            mac[3] += 0x02; // contain carry bit 
+            mac[3] += 0x02; // contain carry bit
             mac[4] += 0xd0;
         } else {
             mac[5] += 1;
@@ -201,4 +199,3 @@ esp_err_t esp_read_mac(uint8_t* mac, esp_mac_type_t type)
 
     return ESP_OK;
 }
-

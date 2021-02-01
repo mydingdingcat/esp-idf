@@ -49,6 +49,7 @@ typedef enum {
 
     EFUSE_BLK9                 = 9,   /**< Number of eFuse BLOCK9. KEY5 */
     EFUSE_BLK_KEY5             = 9,   /**< Number of eFuse BLOCK9. KEY5 */
+    EFUSE_BLK_KEY_MAX          = 10,
 
     EFUSE_BLK10                = 10,  /**< Number of eFuse BLOCK10. SYS_DATA_PART2 */
     EFUSE_BLK_SYS_DATA_PART2   = 10,  /**< Number of eFuse BLOCK10. SYS_DATA_PART2 */

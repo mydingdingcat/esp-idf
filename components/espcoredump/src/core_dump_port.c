@@ -16,8 +16,14 @@
 #include "soc/soc_memory_layout.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "freertos/xtensa_context.h" // for exception register stack structure
 #include "esp_core_dump_priv.h"
+
+#if __XTENSA__
+#include "freertos/xtensa_context.h"
+#else // __XTENSA__
+#define XCHAL_NUM_AREGS 64 // TODO-ESP32C3 coredump support IDF-1758
+#endif // __XTENSA__
+
 #include "esp_rom_sys.h"
 
 const static DRAM_ATTR char TAG[] __attribute__((unused)) = "esp_core_dump_port";
@@ -201,6 +207,22 @@ void esp_core_dump_print_sha256(const char* msg, const uint8_t* sha_output)
 }
 #endif
 
+/**
+ * Prints a message and a checksum given as parameters.
+ * This function is useful when the caller isn't explicitly aware of which
+ * checksum type (CRC32, SHA256, etc) is being used.
+ */
+void esp_core_dump_print_checksum(const char* msg, const void* checksum)
+{
+#if CONFIG_ESP_COREDUMP_CHECKSUM_CRC32
+    esp_rom_printf(DRAM_STR("%s='"), msg);
+    esp_rom_printf(DRAM_STR("%08x"), *((const uint32_t*) checksum));
+    esp_rom_printf(DRAM_STR("'\r\n"));
+#elif CONFIG_ESP_COREDUMP_CHECKSUM_SHA256
+    esp_core_dump_print_sha256(msg, (const uint8_t*) checksum);
+#endif
+}
+
 void esp_core_dump_checksum_init(core_dump_write_data_t* wr_data)
 {
     if (wr_data) {
@@ -230,6 +252,18 @@ void esp_core_dump_checksum_update(core_dump_write_data_t* wr_data, void* data, 
     } else {
         ESP_COREDUMP_LOGE("Wrong write data info!");
     }
+}
+
+/**
+ * Returns the size, in bytes, of the checksums.
+ * Currently, this function is just an alias to esp_core_dump_checksum_finish
+ * function, which can return the size of the checksum if given parameters
+ * are NULL. However, the implementation can evolve in the future independently
+ * from esp_core_dump_checksum_finish function.
+ */
+uint32_t esp_core_dump_checksum_size(void)
+{
+    return esp_core_dump_checksum_finish(NULL, NULL);
 }
 
 uint32_t esp_core_dump_checksum_finish(core_dump_write_data_t* wr_data, void** chs_ptr)
@@ -583,13 +617,13 @@ uint32_t esp_core_dump_get_extra_info(void **info)
 uint32_t esp_core_dump_get_user_ram_segments(void)
 {
     uint32_t total_sz = 0;
-    
+
     // count number of memory segments to insert into ELF structure
     total_sz += COREDUMP_GET_MEMORY_SIZE(&_coredump_dram_end, &_coredump_dram_start) > 0 ? 1 : 0;
     total_sz += COREDUMP_GET_MEMORY_SIZE(&_coredump_rtc_end, &_coredump_rtc_start) > 0 ? 1 : 0;
     total_sz += COREDUMP_GET_MEMORY_SIZE(&_coredump_rtc_fast_end, &_coredump_rtc_fast_start) > 0 ? 1 : 0;
     total_sz += COREDUMP_GET_MEMORY_SIZE(&_coredump_iram_end, &_coredump_iram_start) > 0 ? 1 : 0;
-    
+
     return total_sz;
 }
 
@@ -601,7 +635,7 @@ uint32_t esp_core_dump_get_user_ram_size(void)
     total_sz += COREDUMP_GET_MEMORY_SIZE(&_coredump_rtc_end, &_coredump_rtc_start);
     total_sz += COREDUMP_GET_MEMORY_SIZE(&_coredump_rtc_fast_end, &_coredump_rtc_fast_start);
     total_sz += COREDUMP_GET_MEMORY_SIZE(&_coredump_iram_end, &_coredump_iram_start);
-    
+
     return total_sz;
 }
 

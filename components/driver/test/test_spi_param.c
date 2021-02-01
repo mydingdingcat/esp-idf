@@ -1,12 +1,13 @@
+#include "esp_log.h"
+#include "esp_attr.h"
+#include "soc/spi_periph.h"
+#include "sdkconfig.h"
 #include "test/test_common_spi.h"
 #include "driver/spi_master.h"
 #include "driver/spi_slave.h"
-#include "esp_log.h"
-#include "soc/spi_periph.h"
-#include "test/test_common_spi.h"
-#include "sdkconfig.h"
 
-#if !TEMPORARY_DISABLED_FOR_TARGETS(ESP32S3)
+#if !DISABLED_FOR_TARGETS(ESP32C3)
+//There is only one GPSPI controller on ESP32C3, so single-board test is disabled.
 
 #ifndef MIN
 #define MIN(a, b)((a) > (b)? (b): (a))
@@ -224,7 +225,7 @@ static void local_test_loop(const void* arg1, void* arg2)
 //TODO: esp32s2 has better timing performance
 static spitest_param_set_t timing_pgroup[] = {
 //signals are not fed to peripherals through iomux if the functions are not selected to iomux
-#if !DISABLED_FOR_TARGETS(ESP32S2)
+#if !DISABLED_FOR_TARGETS(ESP32S2, ESP32S3)
     {   .pset_name = "FULL_DUP, MASTER IOMUX",
         .freq_limit = ESP_SPI_SLAVE_MAX_FREQ_SYNC,
         .master_limit = SPI_MASTER_FREQ_13M,
@@ -251,7 +252,7 @@ static spitest_param_set_t timing_pgroup[] = {
         .slave_tv_ns = TV_INT_CONNECT_GPIO,
     },
 //signals are not fed to peripherals through iomux if the functions are not selected to iomux
-#if !DISABLED_FOR_TARGETS(ESP32S2)
+#if !DISABLED_FOR_TARGETS(ESP32S2, ESP32S3)
     {   .pset_name = "MISO_DUP, MASTER IOMUX",
         .freq_limit = ESP_SPI_SLAVE_MAX_FREQ_SYNC,
         .master_limit = ESP_SPI_SLAVE_MAX_FREQ_SYNC,
@@ -278,7 +279,7 @@ static spitest_param_set_t timing_pgroup[] = {
         .slave_tv_ns = TV_INT_CONNECT_GPIO,
     },
 //signals are not fed to peripherals through iomux if the functions are not selected to iomux
-#if !DISABLED_FOR_TARGETS(ESP32S2)
+#if !DISABLED_FOR_TARGETS(ESP32S2, ESP32S3)
     {   .pset_name = "MOSI_DUP, MASTER IOMUX",
         .freq_limit = ESP_SPI_SLAVE_MAX_FREQ_SYNC,
         //.freq_limit = ESP_SPI_SLAVE_MAX_READ_FREQ, //ESP_SPI_SLAVE_MAX_FREQ_SYNC,
@@ -615,7 +616,7 @@ TEST_CASE("Slave receive correct data", "[spi]")
     }
 }
 
-#if !TEMPORARY_DISABLED_FOR_TARGETS(ESP32S2)
+#if !TEMPORARY_DISABLED_FOR_TARGETS(ESP32S2, ESP32S3, ESP32C3)
 //These tests are ESP32 only due to lack of runners
 /********************************************************************************
  *      Test By Master & Slave (2 boards)
@@ -1165,6 +1166,6 @@ spitest_param_set_t mode_conf[] = {
 };
 TEST_SPI_MASTER_SLAVE(MODE, mode_conf, "")
 
-#endif
+#endif // !TEMPORARY_DISABLED_FOR_TARGETS(ESP32S2, ESP32S3, ESP32C3)
 
-#endif
+#endif // !TEMPORARY_DISABLED_FOR_TARGETS(ESP32C3)

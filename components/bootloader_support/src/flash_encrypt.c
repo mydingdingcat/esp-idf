@@ -29,6 +29,9 @@
 #elif CONFIG_IDF_TARGET_ESP32S3
 #define CRYPT_CNT ESP_EFUSE_SPI_BOOT_CRYPT_CNT
 #define WR_DIS_CRYPT_CNT ESP_EFUSE_WR_DIS_SPI_BOOT_CRYPT_CNT
+#elif CONFIG_IDF_TARGET_ESP32C3
+#define CRYPT_CNT ESP_EFUSE_WR_DIS_SPI_BOOT_CRYPT_CNT
+#define WR_DIS_CRYPT_CNT ESP_EFUSE_WR_DIS_SPI_BOOT_CRYPT_CNT
 #endif
 
 #ifndef BOOTLOADER_BUILD
@@ -84,12 +87,12 @@ void esp_flash_write_protect_crypt_cnt(void)
 esp_flash_enc_mode_t esp_get_flash_encryption_mode(void)
 {
     bool flash_crypt_cnt_wr_dis = false;
-#if CONFIG_IDF_TARGET_ESP32   
+#if CONFIG_IDF_TARGET_ESP32
     uint8_t dis_dl_enc = 0, dis_dl_dec = 0, dis_dl_cache = 0;
 #elif CONFIG_IDF_TARGET_ESP32S2
-    uint8_t  dis_dl_enc = 0; 
-    uint8_t dis_dl_icache = 0; 
-    uint8_t dis_dl_dcache = 0; 
+    uint8_t  dis_dl_enc = 0;
+    uint8_t dis_dl_icache = 0;
+    uint8_t dis_dl_dcache = 0;
 
 #endif
 

@@ -210,7 +210,7 @@ static int deep_sleep(int argc, char **argv)
     }
     if (deep_sleep_args.wakeup_gpio_num->count) {
         int io_num = deep_sleep_args.wakeup_gpio_num->ival[0];
-        if (!rtc_gpio_is_valid_gpio(io_num)) {
+        if (!esp_sleep_is_valid_wakeup_gpio(io_num)) {
             ESP_LOGE(TAG, "GPIO %d is not an RTC IO", io_num);
             return 1;
         }
@@ -348,4 +348,3 @@ static void register_light_sleep(void)
     };
     ESP_ERROR_CHECK( esp_console_cmd_register(&cmd) );
 }
-

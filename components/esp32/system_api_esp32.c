@@ -17,7 +17,6 @@
 #include "esp_private/system_internal.h"
 #include "esp_attr.h"
 #include "esp_efuse.h"
-#include "esp_wifi.h"
 #include "esp_log.h"
 #include "sdkconfig.h"
 #include "esp32/rom/cache.h"
@@ -30,7 +29,9 @@
 #include "soc/cpu.h"
 #include "soc/rtc.h"
 #include "hal/wdt_hal.h"
+#include "hal/cpu_hal.h"
 #include "freertos/xtensa_api.h"
+#include "soc/soc_memory_layout.h"
 
 #include "esp32/cache_err_int.h"
 
@@ -57,7 +58,7 @@ void IRAM_ATTR esp_restart_noos(void)
     // CPU must be reset before stalling, in case it was running a s32c1i
     // instruction. This would cause memory pool to be locked by arbiter
     // to the stalled CPU, preventing current CPU from accessing this pool.
-    const uint32_t core_id = xPortGetCoreID();
+    const uint32_t core_id = cpu_hal_get_core_id();
     const uint32_t other_core_id = (core_id == 0) ? 1 : 0;
     esp_cpu_reset(other_core_id);
     esp_cpu_stall(other_core_id);
@@ -116,7 +117,7 @@ void IRAM_ATTR esp_restart_noos(void)
     // Reset timer/spi/uart
     DPORT_SET_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG,
             //UART TX FIFO cannot be reset correctly on ESP32, so reset the UART memory by DPORT here.
-            DPORT_TIMERS_RST | DPORT_SPI01_RST | DPORT_SPI2_RST | DPORT_SPI3_RST | DPORT_SPI_DMA_RST | DPORT_UART_RST | DPORT_UART1_RST | DPORT_UART2_RST | DPORT_UART_MEM_RST); 
+            DPORT_TIMERS_RST | DPORT_SPI01_RST | DPORT_SPI2_RST | DPORT_SPI3_RST | DPORT_SPI_DMA_RST | DPORT_UART_RST | DPORT_UART1_RST | DPORT_UART2_RST | DPORT_UART_MEM_RST);
     DPORT_REG_WRITE(DPORT_PERIP_RST_EN_REG, 0);
 
     // Set CPU back to XTAL source, no PLL, same as hard reset

@@ -83,5 +83,8 @@ entries:
     wlanif:low_level_output (noflash_text)
     wlanif:wlanif_input (noflash_text)
   else:
-    
+
     * (default)
+
+  if ESP_ALLOW_BSS_SEG_EXTERNAL_MEMORY = y:
+    * (extram_bss)

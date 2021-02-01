@@ -128,6 +128,7 @@ We have two bits to control the interrupt:
 #include "soc/soc_memory_layout.h"
 #include "driver/gpio.h"
 #include "hal/spi_hal.h"
+#include "esp_heap_caps.h"
 
 
 typedef struct spi_device_t spi_device_t;
@@ -189,8 +190,8 @@ static inline bool is_valid_host(spi_host_device_t host)
 {
 #if CONFIG_IDF_TARGET_ESP32
     return host >= SPI1_HOST && host <= SPI3_HOST;
-#elif CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
-// SPI_HOST (SPI1_HOST) is not supported by the SPI Master driver on ESP32-S2
+#else
+// SPI_HOST (SPI1_HOST) is not supported by the SPI Master driver on ESP32-S2 and later
     return host >= SPI2_HOST && host <= SPI3_HOST;
 #endif
 }
@@ -357,8 +358,8 @@ esp_err_t spi_bus_add_device(spi_host_device_t host_id, const spi_device_interfa
         .use_gpio = use_gpio
     };
 
-    //output values of timing configuration 
-    spi_hal_timing_conf_t temp_timing_conf;          
+    //output values of timing configuration
+    spi_hal_timing_conf_t temp_timing_conf;
     int freq;
     esp_err_t ret = spi_hal_cal_clock_conf(&timing_param, &freq, &temp_timing_conf);
     SPI_CHECK(ret==ESP_OK, "assigned clock speed not supported", ret);
@@ -683,8 +684,8 @@ static SPI_MASTER_ISR_ATTR esp_err_t check_trans_valid(spi_device_handle_t handl
     bool is_half_duplex = ((handle->cfg.flags & SPI_DEVICE_HALFDUPLEX) != 0);
 
     //check transmission length
-    SPI_CHECK((trans_desc->flags & SPI_TRANS_USE_RXDATA)==0 ||trans_desc->rxlength <= 32, "rxdata transfer > 32 bits without configured DMA", ESP_ERR_INVALID_ARG);
-    SPI_CHECK((trans_desc->flags & SPI_TRANS_USE_TXDATA)==0 ||trans_desc->length <= 32, "txdata transfer > 32 bits without configured DMA", ESP_ERR_INVALID_ARG);
+    SPI_CHECK((trans_desc->flags & SPI_TRANS_USE_RXDATA)==0 || trans_desc->rxlength <= 32, "SPI_TRANS_USE_RXDATA only available for rxdata transfer <= 32 bits", ESP_ERR_INVALID_ARG);
+    SPI_CHECK((trans_desc->flags & SPI_TRANS_USE_TXDATA)==0 || trans_desc->length <= 32, "SPI_TRANS_USE_TXDATA only available for txdata transfer <= 32 bits", ESP_ERR_INVALID_ARG);
     SPI_CHECK(trans_desc->length <= bus_attr->max_transfer_sz*8, "txdata transfer > host maximum", ESP_ERR_INVALID_ARG);
     SPI_CHECK(trans_desc->rxlength <= bus_attr->max_transfer_sz*8, "rxdata transfer > host maximum", ESP_ERR_INVALID_ARG);
     SPI_CHECK(is_half_duplex || trans_desc->rxlength <= trans_desc->length, "rx length > tx length in full duplex mode", ESP_ERR_INVALID_ARG);
@@ -693,6 +694,8 @@ static SPI_MASTER_ISR_ATTR esp_err_t check_trans_valid(spi_device_handle_t handl
     SPI_CHECK(!((trans_desc->flags & (SPI_TRANS_MODE_DIO|SPI_TRANS_MODE_QIO)) && !is_half_duplex), "incompatible iface params", ESP_ERR_INVALID_ARG);
 #ifdef CONFIG_IDF_TARGET_ESP32
     SPI_CHECK(!is_half_duplex || bus_attr->dma_chan == 0 || !rx_enabled || !tx_enabled, "SPI half duplex mode does not support using DMA with both MOSI and MISO phases.", ESP_ERR_INVALID_ARG );
+#elif CONFIG_IDF_TARGET_ESP32S3
+    SPI_CHECK(!is_half_duplex || !tx_enabled || !rx_enabled, "SPI half duplex mode is not supported when both MOSI and MISO phases are enabled.", ESP_ERR_INVALID_ARG);
 #endif
     //MOSI phase is skipped only when both tx_buffer and SPI_TRANS_USE_TXDATA are not set.
     SPI_CHECK(trans_desc->length != 0 || !tx_enabled, "trans tx_buffer should be NULL and SPI_TRANS_USE_TXDATA should be cleared to skip MOSI phase.", ESP_ERR_INVALID_ARG);
@@ -976,4 +979,3 @@ esp_err_t SPI_MASTER_ISR_ATTR spi_device_polling_transmit(spi_device_handle_t ha
 
     return spi_device_polling_end(handle, portMAX_DELAY);
 }
-

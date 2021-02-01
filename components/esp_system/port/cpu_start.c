@@ -30,6 +30,7 @@
 #include "sdkconfig.h"
 
 #if CONFIG_IDF_TARGET_ESP32
+#include "soc/dport_reg.h"
 #include "esp32/rtc.h"
 #include "esp32/cache_err_int.h"
 #include "esp32/rom/cache.h"
@@ -55,6 +56,13 @@
 #include "esp32s3/memprot.h"
 #include "soc/assist_debug_reg.h"
 #include "soc/cache_memory.h"
+#include "soc/system_reg.h"
+#elif CONFIG_IDF_TARGET_ESP32C3
+#include "esp32c3/rtc.h"
+#include "esp32c3/cache_err_int.h"
+#include "esp32s3/rom/cache.h"
+#include "esp32c3/rom/rtc.h"
+#include "soc/cache_memory.h"
 #endif
 
 #include "bootloader_flash_config.h"
@@ -64,14 +72,15 @@
 #include "hal/rtc_io_hal.h"
 #include "hal/wdt_hal.h"
 #include "soc/rtc.h"
-#include "soc/dport_reg.h"
 #include "soc/efuse_reg.h"
 #include "soc/periph_defs.h"
 #include "soc/cpu.h"
 #include "soc/rtc.h"
 #include "soc/spinlock.h"
 
+#if CONFIG_ESP32_TRAX || CONFIG_ESP32S2_TRAX
 #include "trax.h"
+#endif
 
 #include "bootloader_mem.h"
 
@@ -89,7 +98,7 @@ extern int _bss_end;
 extern int _rtc_bss_start;
 extern int _rtc_bss_end;
 
-extern int _init_start;
+extern int _vector_table;
 
 static const char *TAG = "cpu_start";
 
@@ -122,7 +131,7 @@ void startup_resume_other_cores(void)
 
 void IRAM_ATTR call_start_cpu1(void)
 {
-    cpu_hal_set_vecbase(&_init_start);
+    cpu_hal_set_vecbase(&_vector_table);
 
     ets_set_appcpu_boot_addr(0);
 
@@ -132,7 +141,7 @@ void IRAM_ATTR call_start_cpu1(void)
     esp_rom_install_channel_putc(1, NULL);
     esp_rom_install_channel_putc(2, NULL);
 #else // CONFIG_ESP_CONSOLE_UART_NONE
-    ets_install_uart_printf();
+    esp_rom_install_uart_printf();
     esp_rom_uart_set_as_console(CONFIG_ESP_CONSOLE_UART_NUM);
 #endif
 
@@ -219,7 +228,7 @@ static void start_other_core(void)
 
 static void intr_matrix_clear(void)
 {
-    for (int i = ETS_WIFI_MAC_INTR_SOURCE; i < ETS_MAX_INTR_SOURCE; i++) {
+    for (int i = 0; i < ETS_MAX_INTR_SOURCE; i++) {
         intr_matrix_set(0, i, ETS_INVALID_INUM);
 #if !CONFIG_ESP_SYSTEM_SINGLE_CORE_MODE
         intr_matrix_set(1, i, ETS_INVALID_INUM);
@@ -239,8 +248,20 @@ void IRAM_ATTR call_start_cpu0(void)
     RESET_REASON rst_reas[1];
 #endif
 
+#ifdef __riscv
+    // Configure the global pointer register
+    // (This should be the first thing IDF app does, as any other piece of code could be
+    // relaxed by the linker to access something relative to __global_pointer$)
+    __asm__ __volatile__ (
+    	".option push\n"
+        ".option norelax\n"
+        "la gp, __global_pointer$\n"
+        ".option pop"
+                          );
+#endif
+
     // Move exception vectors to IRAM
-    cpu_hal_set_vecbase(&_init_start);
+    cpu_hal_set_vecbase(&_vector_table);
 
     rst_reas[0] = rtc_get_reset_reason(0);
 #if !CONFIG_ESP_SYSTEM_SINGLE_CORE_MODE
@@ -300,14 +321,16 @@ void IRAM_ATTR call_start_cpu0(void)
     extern void rom_config_data_cache_mode(uint32_t cfg_cache_size, uint8_t cfg_cache_ways, uint8_t cfg_cache_line_size);
     rom_config_data_cache_mode(CONFIG_ESP32S3_DATA_CACHE_SIZE, CONFIG_ESP32S3_DCACHE_ASSOCIATED_WAYS, CONFIG_ESP32S3_DATA_CACHE_LINE_SIZE);
     Cache_Resume_DCache(0);
+#endif // CONFIG_IDF_TARGET_ESP32S3
 
+#if CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32C3
     /* Configure the Cache MMU size for instruction and rodata in flash. */
     extern uint32_t Cache_Set_IDROM_MMU_Size(uint32_t irom_size, uint32_t drom_size);
     extern int _rodata_reserved_start;
     uint32_t rodata_reserved_start_align = (uint32_t)&_rodata_reserved_start & ~(MMU_PAGE_SIZE - 1);
     uint32_t cache_mmu_irom_size = ((rodata_reserved_start_align - SOC_DROM_LOW) / MMU_PAGE_SIZE) * sizeof(uint32_t);
     Cache_Set_IDROM_MMU_Size(cache_mmu_irom_size, CACHE_DROM_MMU_MAX_END - cache_mmu_irom_size);
-#endif
+#endif // CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32C3
 
     bootloader_init_mem();
 #if CONFIG_SPIRAM_BOOT_INIT
@@ -327,7 +350,9 @@ void IRAM_ATTR call_start_cpu0(void)
         abort();
 #endif
     }
-    esp_spiram_init_cache();
+    if (g_spiram_ok) {
+        esp_spiram_init_cache();
+    }
 #endif
 
 #if !CONFIG_ESP_SYSTEM_SINGLE_CORE_MODE
@@ -359,7 +384,6 @@ void IRAM_ATTR call_start_cpu0(void)
     }
 #endif
 
-#if CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
 #if CONFIG_SPIRAM_FETCH_INSTRUCTIONS
     extern void instruction_flash_page_info_init(void);
     instruction_flash_page_info_init();
@@ -389,7 +413,6 @@ void IRAM_ATTR call_start_cpu0(void)
     extern void esp_enable_cache_wrap(uint32_t icache_wrap_enable, uint32_t dcache_wrap_enable);
     esp_enable_cache_wrap(icache_wrap_enable, dcache_wrap_enable);
 #endif
-#endif // CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
 
 #if CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY
     memset(&_ext_ram_bss_start, 0, (&_ext_ram_bss_end - &_ext_ram_bss_start) * sizeof(_ext_ram_bss_start));
@@ -420,7 +443,7 @@ void IRAM_ATTR call_start_cpu0(void)
 
 #ifdef CONFIG_ESP_CONSOLE_UART
     uint32_t clock_hz = rtc_clk_apb_freq_get();
-#if CONFIG_IDF_TARGET_ESP32S3
+#if CONFIG_IDF_TARGET_ESP32S3 || CONFIG_IDF_TARGET_ESP32C3
     clock_hz = UART_CLK_FREQ_ROM; // From esp32-s3 on, UART clock source is selected to XTAL in ROM
 #endif
     esp_rom_uart_set_clock_baudrate(CONFIG_ESP_CONSOLE_UART_NUM, clock_hz, CONFIG_ESP_CONSOLE_UART_BAUDRATE);

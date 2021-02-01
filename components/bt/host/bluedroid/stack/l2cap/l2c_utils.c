@@ -1453,7 +1453,7 @@ tL2C_CCB *l2cu_allocate_ccb (tL2C_LCB *p_lcb, UINT16 cid)
     p_ccb->p_next_ccb = p_ccb->p_prev_ccb = NULL;
 
     p_ccb->in_use = TRUE;
-   
+
     /* Get a CID for the connection */
     p_ccb->local_cid = L2CAP_BASE_APPL_CID + (list_length(l2cb.p_ccb_pool) - 1);
     p_ccb->p_lcb = p_lcb;
@@ -3232,7 +3232,7 @@ bool l2cu_find_ccb_in_list(void *p_ccb_node, void *p_local_cid)
         return FALSE;
     }
     return TRUE;
-}	
+}
 
 tL2C_CCB *l2cu_find_ccb_by_cid (tL2C_LCB *p_lcb, UINT16 local_cid)
 {
@@ -3247,7 +3247,7 @@ tL2C_CCB *l2cu_find_ccb_by_cid (tL2C_LCB *p_lcb, UINT16 local_cid)
     p_node = (list_foreach(l2cb.p_ccb_pool, l2cu_find_ccb_in_list, &local_cid));
     if (p_node) {
 	p_ccb = (tL2C_CCB *)list_node(p_node);
- 
+
 	if (p_lcb && p_lcb != p_ccb->p_lcb) {
 	    p_ccb = NULL;
  	}
@@ -3465,13 +3465,12 @@ BT_HDR *l2cu_get_next_buffer_to_send (tL2C_LCB *p_lcb)
                     L2CAP_TRACE_ERROR("l2cu_get_buffer_to_send: No data to be sent");
                     return (NULL);
                 }
+                l2cu_check_channel_congestion (p_ccb);
+                l2cu_set_acl_hci_header (p_buf, p_ccb);
                 /* send tx complete */
                 if (l2cb.fixed_reg[xx].pL2CA_FixedTxComplete_Cb) {
                     (*l2cb.fixed_reg[xx].pL2CA_FixedTxComplete_Cb)(p_ccb->local_cid, 1);
                 }
-
-                l2cu_check_channel_congestion (p_ccb);
-                l2cu_set_acl_hci_header (p_buf, p_ccb);
                 return (p_buf);
             }
         }
@@ -3670,4 +3669,3 @@ void l2cu_check_channel_congestion (tL2C_CCB *p_ccb)
         }
     }
 }
-

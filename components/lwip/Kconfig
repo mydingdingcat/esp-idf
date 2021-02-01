@@ -300,10 +300,10 @@ menu "LWIP"
             each request.
 
     config LWIP_IPV6_AUTOCONFIG
-        bool "Enable IPV6 stateless address autoconfiguration"
+        bool "Enable IPV6 stateless address autoconfiguration (SLAAC)"
         default n
         help
-            Enabling this option allows the devices to IPV6 stateless address autoconfiguration.
+            Enabling this option allows the devices to IPV6 stateless address autoconfiguration (SLAAC).
 
             See RFC 4862.
 
@@ -353,6 +353,13 @@ menu "LWIP"
                 change the memory usage of LWIP, except for preventing
                 new listening TCP connections after the limit is reached.
 
+        config LWIP_TCP_HIGH_SPEED_RETRANSMISSION
+            bool "TCP high speed retransmissions"
+            default y
+            help
+                Speed up the TCP retransmission interval. If disabled,
+                it is recommended to change the number of SYN retransmissions to 6,
+                and TCP initial rto time to 3000.
 
         config LWIP_TCP_MAXRTX
             int "Maximum number of retransmissions of data segments"
@@ -363,7 +370,8 @@ menu "LWIP"
 
         config LWIP_TCP_SYNMAXRTX
             int "Maximum number of retransmissions of SYN segments"
-            default 6
+            default 6 if !LWIP_TCP_HIGH_SPEED_RETRANSMISSION
+            default 12 if LWIP_TCP_HIGH_SPEED_RETRANSMISSION
             range 3 12
             help
                 Set maximum number of retransmissions of SYN segments.
@@ -512,7 +520,8 @@ menu "LWIP"
 
         config LWIP_TCP_RTO_TIME
             int "Default TCP rto time"
-            default 3000
+            default 3000 if !LWIP_TCP_HIGH_SPEED_RETRANSMISSION
+            default 1500 if LWIP_TCP_HIGH_SPEED_RETRANSMISSION
             help
                 Set default TCP rto time for a reasonable initial rto.
                 In bad network environment, recommend set value of rto time to 1500.
@@ -549,6 +558,28 @@ menu "LWIP"
                 receive mail box is big enough to avoid packet drop between LWIP core and application.
 
     endmenu # UDP
+
+    menu "Checksums"
+
+        config LWIP_CHECKSUM_CHECK_IP
+            bool "Enable LWIP IP checksums"
+            default n
+            help
+                Enable checksum checking for received IP messages
+
+        config LWIP_CHECKSUM_CHECK_UDP
+            bool "Enable LWIP UDP checksums"
+            default n
+            help
+                Enable checksum checking for received UDP messages
+
+        config LWIP_CHECKSUM_CHECK_ICMP
+            bool "Enable LWIP ICMP checksums"
+            default y
+            help
+                Enable checksum checking for received ICMP messages
+
+    endmenu # Checksums
 
     config LWIP_TCPIP_TASK_STACK_SIZE
         int "TCP/IP Task Stack Size"
@@ -730,6 +761,74 @@ menu "LWIP"
             Enable this option allows lwip to check assert.
             It is recommended to keep it open, do not close it.
 
+    menu "Hooks"
+
+        choice LWIP_HOOK_TCP_ISN
+            prompt "TCP ISN Hook"
+            default LWIP_HOOK_TCP_ISN_DEFAULT
+            help
+                Enables to define a TCP ISN hook to randomize initial sequence
+                number in TCP connection.
+                The default TCP ISN algorithm used in IDF (standardized in RFC 6528)
+                produces ISN by combining an MD5 of the new TCP id and a stable
+                secret with the current time.
+                This is because the lwIP implementation (`tcp_next_iss`) is not
+                very strong, as it does not take into consideration any platform
+                specific entropy source.
+
+                Set to LWIP_HOOK_TCP_ISN_CUSTOM to provide custom implementation.
+                Set to LWIP_HOOK_TCP_ISN_NONE to use lwIP implementation.
+
+
+            config LWIP_HOOK_TCP_ISN_NONE
+                bool "No hook declared"
+            config LWIP_HOOK_TCP_ISN_DEFAULT
+                bool "Default implementation"
+            config LWIP_HOOK_TCP_ISN_CUSTOM
+                bool "Custom implementation"
+
+        endchoice
+
+        choice LWIP_HOOK_IP6_ROUTE
+            prompt "IPv6 route Hook"
+            default LWIP_HOOK_IP6_ROUTE_NONE
+            help
+                Enables custom IPv6 route hook.
+                Setting this to "default" provides weak implementation
+                stub that could be overwritten in application code.
+                Setting this to "custom" provides hook's declaration
+                only and expects the application to implement it.
+
+            config LWIP_HOOK_IP6_ROUTE_NONE
+                bool "No hook declared"
+            config LWIP_HOOK_IP6_ROUTE_DEFAULT
+                bool "Default (weak) implementation"
+            config LWIP_HOOK_IP6_ROUTE_CUSTOM
+                bool "Custom implementation"
+
+        endchoice
+
+        choice LWIP_HOOK_NETCONN_EXTERNAL_RESOLVE
+            prompt "Netconn external resolve Hook"
+            default LWIP_HOOK_NETCONN_EXT_RESOLVE_NONE
+            help
+                Enables custom DNS resolve hook.
+                Setting this to "default" provides weak implementation
+                stub that could be overwritten in application code.
+                Setting this to "custom" provides hook's declaration
+                only and expects the application to implement it.
+
+            config LWIP_HOOK_NETCONN_EXT_RESOLVE_NONE
+                bool "No hook declared"
+            config LWIP_HOOK_NETCONN_EXT_RESOLVE_DEFAULT
+                bool "Default (weak) implementation"
+            config LWIP_HOOK_NETCONN_EXT_RESOLVE_CUSTOM
+                bool "Custom implementation"
+
+        endchoice
+
+    endmenu # Hooks
+
     menu "Debug"
 
         config LWIP_NETIF_DEBUG
@@ -760,12 +859,20 @@ menu "LWIP"
             bool "Enable ICMP debug messages"
             default n
 
+        config LWIP_DHCP_DEBUG
+            bool "Enable DHCP debug messages"
+            default n
+
         config LWIP_IP6_DEBUG
             bool "Enable IP6 debug messages"
             default n
 
         config LWIP_ICMP6_DEBUG
             bool "Enable ICMP6 debug messages"
+            default n
+
+        config LWIP_TCP_DEBUG
+            bool "Enable TCP debug messages"
             default n
 
     endmenu #debug

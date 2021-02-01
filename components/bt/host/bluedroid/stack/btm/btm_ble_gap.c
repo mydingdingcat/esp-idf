@@ -321,7 +321,7 @@ BOOLEAN BTM_BleUpdateAdvWhitelist(BOOLEAN add_remove, BD_ADDR remote_bda, tBLE_A
 *******************************************************************************/
 void BTM_BleClearWhitelist(void)
 {
-   btm_ble_clear_white_list(); 
+   btm_ble_clear_white_list();
 }
 
 /*******************************************************************************
@@ -4466,5 +4466,28 @@ BOOLEAN btm_ble_topology_check(tBTM_BLE_STATE_MASK request_state_mask)
     return rt;
 }
 
+/*******************************************************************************
+ **
+ ** Function         BTM_Ble_Authorization
+ **
+ ** Description      This function is used to authorize a specified device
+ **
+ ** Returns          TRUE or FALSE
+ **
+ *******************************************************************************/
+BOOLEAN BTM_Ble_Authorization(BD_ADDR bd_addr, BOOLEAN authorize)
+{
+    if (bd_addr == NULL) {
+        BTM_TRACE_ERROR("bd_addr is NULL");
+        return FALSE;
+    }
+
+    if (btm_sec_dev_authorization(bd_addr, authorize)) {
+        return TRUE;
+    }
+
+    BTM_TRACE_ERROR("Authorization fail");
+    return FALSE;
+}
 
 #endif  /* BLE_INCLUDED */

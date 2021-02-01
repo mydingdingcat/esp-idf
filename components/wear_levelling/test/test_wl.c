@@ -13,6 +13,8 @@
 #include "esp32s2/clk.h"
 #elif CONFIG_IDF_TARGET_ESP32S3
 #include "esp32s3/clk.h"
+#elif CONFIG_IDF_TARGET_ESP32C3
+#include "esp32c3/clk.h"
 #endif
 #include "soc/cpu.h"
 #include "esp_rom_sys.h"
@@ -236,7 +238,7 @@ TEST_CASE("multiple write is correct", "[wear_levelling]")
     check_mem_data(handle, init_val, buff);
 
     uint32_t start;
-    RSR(CCOUNT, start);
+    start = cpu_hal_get_cycle_count();
 
 
     for (int m=0 ; m< 100000 ; m++) {
@@ -249,7 +251,7 @@ TEST_CASE("multiple write is correct", "[wear_levelling]")
         check_mem_data(handle, init_val, buff);
 
         uint32_t end;
-        RSR(CCOUNT, end);
+        end = cpu_hal_get_cycle_count();
         uint32_t ms = (end - start) / (esp_clk_cpu_freq() / 1000);
         printf("loop %4i pass, time= %ims\n", m, ms);
         if (ms > 10000) {

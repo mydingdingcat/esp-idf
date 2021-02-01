@@ -12,22 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include <stdlib.h>
+#include <string.h>
 
 #include "esp_err.h"
 #include "esp_attr.h"
 
-#include "esp_spi_flash.h"
 #include "esp_private/system_internal.h"
-#include "esp_private/gdbstub.h"
 #include "esp_private/usb_console.h"
 #include "esp_ota_ops.h"
-
-#if CONFIG_APPTRACE_ENABLE
-#include "esp_app_trace.h"
-#if CONFIG_SYSVIEW_ENABLE
-#include "SEGGER_RTT.h"
-#endif
-#endif // CONFIG_APPTRACE_ENABLE
 
 #include "esp_core_dump.h"
 
@@ -38,20 +30,34 @@
 #include "hal/wdt_types.h"
 #include "hal/wdt_hal.h"
 
-#if !CONFIG_ESP_SYSTEM_PANIC_SILENT_REBOOT
-#include <string.h>
-#include "hal/uart_hal.h"
-#endif
-
 #include "esp_private/panic_internal.h"
 #include "port/panic_funcs.h"
 
 #include "sdkconfig.h"
 
+#if CONFIG_ESP32_ENABLE_COREDUMP
+#include "esp_core_dump.h"
+#endif
+
+#if CONFIG_APPTRACE_ENABLE
+#include "esp_app_trace.h"
+#if CONFIG_SYSVIEW_ENABLE
+#include "SEGGER_RTT.h"
+#endif
+
 #if CONFIG_APPTRACE_ONPANIC_HOST_FLUSH_TMO == -1
 #define APPTRACE_ONPANIC_HOST_FLUSH_TMO   ESP_APPTRACE_TMO_INFINITE
 #else
 #define APPTRACE_ONPANIC_HOST_FLUSH_TMO   (1000*CONFIG_APPTRACE_ONPANIC_HOST_FLUSH_TMO)
+#endif
+#endif // CONFIG_APPTRACE_ENABLE
+
+#if !CONFIG_ESP_SYSTEM_PANIC_SILENT_REBOOT
+#include "hal/uart_hal.h"
+#endif
+
+#if CONFIG_ESP_SYSTEM_PANIC_GDBSTUB
+#include "esp_gdbstub.h"
 #endif
 
 bool g_panic_abort = false;
@@ -292,7 +298,7 @@ void esp_panic_handler(panic_info_t *info)
     wdt_hal_disable(&rtc_wdt_ctx);
     wdt_hal_write_protect_enable(&rtc_wdt_ctx);
     panic_print_str("Entering gdb stub now.\r\n");
-    esp_gdbstub_panic_handler((XtExcFrame*) info->frame);
+    esp_gdbstub_panic_handler((esp_gdbstub_frame_t*)info->frame);
 #else
 #if CONFIG_ESP_COREDUMP_ENABLE
     static bool s_dumping_core;

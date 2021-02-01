@@ -32,7 +32,7 @@
 #include "esp_log.h"
 #include "esp_attr.h"
 #include "bignum_impl.h"
-#include "soc/rsa_caps.h"
+#include "soc/soc_caps.h"
 
 #include <mbedtls/bignum.h>
 
@@ -528,4 +528,3 @@ cleanup:
 }
 
 #endif /* MBEDTLS_MPI_MUL_MPI_ALT */
-

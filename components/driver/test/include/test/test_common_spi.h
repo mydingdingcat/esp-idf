@@ -49,7 +49,7 @@
 #define ESP_SPI_SLAVE_TV        (12.5*3.5)
 #define WIRE_DELAY              12.5
 
-#elif CONFIG_IDF_TARGET_ESP32S2
+#elif CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
 
 #define TEST_SPI_HOST   FSPI_HOST
 #define TEST_SLAVE_HOST HSPI_HOST
@@ -58,6 +58,7 @@
 #define PIN_NUM_MOSI    FSPI_IOMUX_PIN_NUM_MOSI
 #define PIN_NUM_CLK     FSPI_IOMUX_PIN_NUM_CLK
 #define PIN_NUM_CS      FSPI_IOMUX_PIN_NUM_CS
+
 #define PIN_NUM_WP      FSPI_IOMUX_PIN_NUM_WP
 #define PIN_NUM_HD      FSPI_IOMUX_PIN_NUM_HD
 
@@ -80,6 +81,41 @@
 
 #define UNCONNECTED_PIN         41
 #define INPUT_ONLY_PIN          46
+#define GPIO_DELAY              0
+#define ESP_SPI_SLAVE_TV        0
+#define WIRE_DELAY              12.5
+
+#elif CONFIG_IDF_TARGET_ESP32C3
+
+#define TEST_SPI_HOST   FSPI_HOST
+#define TEST_SLAVE_HOST FSPI_HOST
+
+#define PIN_NUM_MISO    FSPI_IOMUX_PIN_NUM_MISO
+#define PIN_NUM_MOSI    FSPI_IOMUX_PIN_NUM_MOSI
+#define PIN_NUM_CLK     FSPI_IOMUX_PIN_NUM_CLK
+#define PIN_NUM_CS      FSPI_IOMUX_PIN_NUM_CS
+
+#define PIN_NUM_WP      FSPI_IOMUX_PIN_NUM_WP
+#define PIN_NUM_HD      FSPI_IOMUX_PIN_NUM_HD
+
+#define SLAVE_PIN_NUM_MISO    -1
+#define SLAVE_PIN_NUM_MOSI    -1
+#define SLAVE_PIN_NUM_CLK     -1
+#define SLAVE_PIN_NUM_CS      -1
+#define SLAVE_PIN_NUM_WP      -1
+#define SLAVE_PIN_NUM_HD      -1
+
+//NOTE: On esp32c3, there is only 1 GPSPI controller, so master-slave test on single board should be disabled
+#define SLAVE_IOMUX_PIN_MISO    FSPI_IOMUX_PIN_NUM_MISO
+#define SLAVE_IOMUX_PIN_MOSI    FSPI_IOMUX_PIN_NUM_MOSI
+#define SLAVE_IOMUX_PIN_SCLK    FSPI_IOMUX_PIN_NUM_CLK
+#define SLAVE_IOMUX_PIN_CS      FSPI_IOMUX_PIN_NUM_CS
+
+#define MASTER_IOMUX_PIN_MISO   FSPI_IOMUX_PIN_NUM_MISO
+#define MASTER_IOMUX_PIN_MOSI   FSPI_IOMUX_PIN_NUM_MOSI
+#define MASTER_IOMUX_PIN_SCLK   FSPI_IOMUX_PIN_NUM_CLK
+#define MASTER_IOMUX_PIN_CS     FSPI_IOMUX_PIN_NUM_CS
+
 #define GPIO_DELAY              0
 #define ESP_SPI_SLAVE_TV        0
 #define WIRE_DELAY              12.5

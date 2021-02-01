@@ -96,9 +96,6 @@ IRAM_ATTR void *wifi_calloc( size_t n, size_t size )
 static void * IRAM_ATTR wifi_zalloc_wrapper(size_t size)
 {
     void *ptr = wifi_calloc(1, size);
-    if (ptr) {
-        memset(ptr, 0, size);
-    }
     return ptr;
 }
 
@@ -455,7 +452,7 @@ static int get_time_wrapper(void *t)
 
 static uint32_t esp_clk_slowclk_cal_get_wrapper(void)
 {
-    /* The bit width of WiFi light sleep clock calibration is 12 while the one of 
+    /* The bit width of WiFi light sleep clock calibration is 12 while the one of
      * system is 19. It should shift 19 - 12 = 7.
     */
     return (esp_clk_slowclk_cal_get() >> 7);
@@ -479,9 +476,6 @@ static void * IRAM_ATTR calloc_internal_wrapper(size_t n, size_t size)
 static void * IRAM_ATTR zalloc_internal_wrapper(size_t size)
 {
     void *ptr = heap_caps_calloc(1, size, MALLOC_CAP_8BIT|MALLOC_CAP_DMA|MALLOC_CAP_INTERNAL);
-    if (ptr) {
-        memset(ptr, 0, size);
-    }
     return ptr;
 }
 

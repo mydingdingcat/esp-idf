@@ -11,6 +11,24 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#include "sdkconfig.h"
+
+#ifndef CONFIG_SPI_FLASH_ROM_IMPL
+
+// HAL for
+//  - MEMSPI
+//  - SPI1~3 on ESP32
+// The common part is in spi_flash_hal_common.inc
+
+// HAL for
+//  - MEMSPI
+//  - SPI1~3 on ESP32
+// The common part is in spi_flash_hal_common.inc
+
+// HAL for
+//  - MEMSPI
+//  - SPI1~3 on ESP32
+// The common part is in spi_flash_hal_common.inc
 
 #include "spi_flash_hal_common.inc"
 
@@ -21,6 +39,7 @@ void spi_flash_hal_erase_chip(spi_flash_host_inst_t *host)
     host->driver->poll_cmd_done(host);
 }
 
+// Only support 24bit address
 void spi_flash_hal_erase_sector(spi_flash_host_inst_t *host, uint32_t start_address)
 {
     spi_dev_t *dev = get_spi_dev(host);
@@ -30,6 +49,7 @@ void spi_flash_hal_erase_sector(spi_flash_host_inst_t *host, uint32_t start_addr
     host->driver->poll_cmd_done(host);
 }
 
+// Only support 24bit address
 void spi_flash_hal_erase_block(spi_flash_host_inst_t *host, uint32_t start_address)
 {
     spi_dev_t *dev = get_spi_dev(host);
@@ -39,6 +59,7 @@ void spi_flash_hal_erase_block(spi_flash_host_inst_t *host, uint32_t start_addre
     host->driver->poll_cmd_done(host);
 }
 
+// Only support 24bit address
 void spi_flash_hal_program_page(spi_flash_host_inst_t *host, const void *buffer, uint32_t address, uint32_t length)
 {
     spi_dev_t *dev = get_spi_dev(host);
@@ -66,12 +87,12 @@ bool spi_flash_hal_host_idle(spi_flash_host_inst_t *host)
     if ((void*) dev == spi_flash_ll_get_hw(SPI_HOST)) {
 #if CONFIG_IDF_TARGET_ESP32
         idle &= spi_flash_ll_host_idle(&SPI0);
-#elif CONFIG_IDF_TARGET_ESP32S2
-        idle &= spi_flash_ll_host_idle(&SPIMEM0);
-#elif CONFIG_IDF_TARGET_ESP32S3
+#else
         idle &= spi_flash_ll_host_idle(&SPIMEM0);
 #endif
     }
 
     return idle;
 }
+
+#endif // !CONFIG_SPI_FLASH_ROM_IMPL

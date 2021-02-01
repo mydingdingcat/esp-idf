@@ -1,9 +1,9 @@
-// Copyright 2015-2016 Espressif Systems (Shanghai) PTE LTD
+// Copyright 2015-2020 Espressif Systems (Shanghai) PTE LTD
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
-
+//
 //     http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "sdkconfig.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,6 +20,7 @@
 #include <esp_types.h>
 #include <limits.h>
 #include <assert.h>
+#include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_err.h"
@@ -48,7 +48,8 @@ Define this to debug the choices made when allocating the interrupt. This leads 
 output within a critical region, which can lead to weird effects like e.g. the interrupt watchdog
 being triggered, that is why it is separate from the normal LOG* scheme.
 */
-//define DEBUG_INT_ALLOC_DECISIONS
+// #define DEBUG_INT_ALLOC_DECISIONS
+
 #ifdef DEBUG_INT_ALLOC_DECISIONS
 # define ALCHLOG(...) ESP_EARLY_LOGD(TAG, __VA_ARGS__)
 #else
@@ -237,6 +238,8 @@ static bool is_vect_desc_usable(vector_desc_t *vd, int flags, int cpu, int force
         ALCHLOG("....Unusable: special-purpose int");
         return false;
     }
+
+#ifndef SOC_CPU_HAS_FLEXIBLE_INTC
     //Check if the interrupt level is acceptable
     if (!(flags&(1<<interrupt_controller_hal_get_level(x)))) {
         ALCHLOG("....Unusable: incompatible level");
@@ -244,10 +247,12 @@ static bool is_vect_desc_usable(vector_desc_t *vd, int flags, int cpu, int force
     }
     //check if edge/level type matches what we want
     if (((flags&ESP_INTR_FLAG_EDGE) && (interrupt_controller_hal_get_type(x)==INTTP_LEVEL)) ||
-            (((!(flags&ESP_INTR_FLAG_EDGE)) && (interrupt_controller_hal_get_type(x)==INTTP_EDGE)))) {
+        (((!(flags&ESP_INTR_FLAG_EDGE)) && (interrupt_controller_hal_get_type(x)==INTTP_EDGE)))) {
         ALCHLOG("....Unusable: incompatible trigger type");
         return false;
     }
+#endif
+
     //check if interrupt is reserved at runtime
     if (vd->flags&VECDESC_FL_RESERVED)  {
         ALCHLOG("....Unusable: reserved at runtime.");
@@ -531,7 +536,7 @@ esp_err_t esp_intr_alloc_intrstatus(int source, int flags, uint32_t intrstatusre
         vd->shared_vec_info=sh_vec;
         vd->flags|=VECDESC_FL_SHARED;
         //(Re-)set shared isr handler to new value.
-        xt_set_interrupt_handler(intr, shared_intr_isr, vd);
+        interrupt_controller_hal_set_int_handler(intr, shared_intr_isr, vd);
     } else {
         //Mark as unusable for other interrupt sources. This is ours now!
         vd->flags=VECDESC_FL_NONSHARED;
@@ -551,7 +556,11 @@ esp_err_t esp_intr_alloc_intrstatus(int source, int flags, uint32_t intrstatusre
             interrupt_controller_hal_set_int_handler(intr, handler, arg);
 #endif
         }
-        if (flags&ESP_INTR_FLAG_EDGE) xthal_set_intclear(1 << intr);
+
+        if (flags & ESP_INTR_FLAG_EDGE) {
+            interrupt_controller_hal_edge_int_acknowledge(intr);
+        }
+
         vd->source=source;
     }
     if (flags&ESP_INTR_FLAG_IRAM) {
@@ -577,6 +586,18 @@ esp_err_t esp_intr_alloc_intrstatus(int source, int flags, uint32_t intrstatusre
     if (flags&ESP_INTR_FLAG_INTRDISABLED) {
         esp_intr_disable(ret);
     }
+
+#ifdef SOC_CPU_HAS_FLEXIBLE_INTC
+    //Extract the level from the interrupt passed flags
+    int level = esp_intr_flags_to_level(flags);
+    interrupt_controller_hal_set_int_level(intr, level);
+
+    if (flags & ESP_INTR_FLAG_EDGE) {
+        interrupt_controller_hal_set_int_type(intr, INTTP_EDGE);
+    } else {
+        interrupt_controller_hal_set_int_type(intr, INTTP_LEVEL);
+    }
+#endif
 
     portEXIT_CRITICAL(&spinlock);
 
@@ -801,15 +822,15 @@ void IRAM_ATTR esp_intr_noniram_enable(void)
 //equivalents here.
 
 
-void IRAM_ATTR ets_isr_unmask(unsigned int mask) {
+void IRAM_ATTR ets_isr_unmask(uint32_t mask) {
     interrupt_controller_hal_enable_interrupts(mask);
 }
 
-void IRAM_ATTR ets_isr_mask(unsigned int mask) {
+void IRAM_ATTR ets_isr_mask(uint32_t mask) {
     interrupt_controller_hal_disable_interrupts(mask);
 }
 
-void esp_intr_enable_source(int inum) 
+void esp_intr_enable_source(int inum)
 {
     interrupt_controller_hal_enable_interrupts(1 << inum);
 }
